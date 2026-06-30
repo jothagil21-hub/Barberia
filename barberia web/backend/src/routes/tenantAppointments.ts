@@ -1,0 +1,87 @@
+import { z } from 'zod';
+import type { FastifyInstance } from 'fastify';
+import { prisma } from '../lib/prisma.js';
+
+const dateQuerySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha: YYYY-MM-DD'),
+});
+
+const STATUS_LABELS: Record<string, string> = {
+  scheduled: 'Programada',
+  canceled: 'Cancelada',
+  attended: 'Asistió',
+  no_show: 'No asistió',
+};
+
+export async function tenantAppointmentsRoutes(app: FastifyInstance) {
+  app.addHook('onRequest', app.authenticatePlatform);
+
+  app.get<{ Params: { id: string }; Querystring: { date?: string } }>(
+    '/api/platform/tenants/:id/appointments',
+    async (request, reply) => {
+      const parsed = dateQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: parsed.error.flatten().fieldErrors.date?.[0] ?? 'Parámetro date requerido (YYYY-MM-DD)',
+        });
+      }
+
+      const tenant = await prisma.tenant.findUnique({ where: { id: request.params.id } });
+      if (!tenant) {
+        return reply.status(404).send({ error: 'Barbería no encontrada' });
+      }
+
+      const { date } = parsed.data;
+
+      const barbers = await prisma.barber.findMany({
+        where: { tenantId: tenant.id, active: true },
+        orderBy: { name: 'asc' },
+      });
+
+      const appointments = await prisma.appointment.findMany({
+        where: { tenantId: tenant.id, date },
+        include: {
+          services: {
+            include: { service: { select: { name: true } } },
+          },
+        },
+        orderBy: [{ barberId: 'asc' }, { time: 'asc' }],
+      });
+
+      const byBarber = new Map<string, typeof appointments>();
+      for (const apt of appointments) {
+        const list = byBarber.get(apt.barberId) ?? [];
+        list.push(apt);
+        byBarber.set(apt.barberId, list);
+      }
+
+      return {
+        date,
+        tenantName: tenant.name,
+        barbers: barbers.map((barber) => ({
+          id: barber.id,
+          name: barber.name,
+          active: barber.active,
+          appointments: (byBarber.get(barber.id) ?? []).map((apt) => {
+            const services = apt.services.map((line) => ({
+              name: line.service.name,
+              unitPrice: line.unitPrice,
+              durationMinutes: line.durationMinutes,
+            }));
+            const totalPrice = services.reduce((sum, s) => sum + s.unitPrice, 0);
+            return {
+              id: apt.id,
+              clientName: apt.clientName,
+              time: apt.time,
+              durationMinutes: apt.durationMinutes,
+              status: apt.status,
+              statusLabel: STATUS_LABELS[apt.status] ?? apt.status,
+              services,
+              totalPrice,
+            };
+          }),
+        })),
+      };
+    },
+  );
+}
