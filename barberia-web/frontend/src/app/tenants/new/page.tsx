@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { AppNav } from '@/components/AppNav';
 import { AuthGuard } from '@/components/AuthGuard';
 import { InlineAlert } from '@/components/InlineAlert';
+import { LoadingButton } from '@/components/LoadingButton';
 import { PageHeader } from '@/components/PageHeader';
 import { useToast } from '@/components/useToast';
 import { api, ApiError } from '@/lib/api';
@@ -40,7 +41,7 @@ export default function NewTenantPage() {
       <AppNav />
       <main className="container">
         <PageHeader title="Nueva barbería" subtitle="Registra un nuevo negocio en la plataforma." />
-        <div className="card" style={{ maxWidth: 480 }}>
+        <div className="card form-card">
           <form onSubmit={onSubmit}>
             <div className="field">
               <label htmlFor="name">Nombre del negocio</label>
@@ -51,10 +52,10 @@ export default function NewTenantPage() {
               <input id="slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="mi-barberia" />
             </div>
             {error && <InlineAlert message={error} />}
-            <div className="actions-row" style={{ marginBottom: 0 }}>
-              <button type="submit" className="btn btn-primary" disabled={loading}>
-                {loading ? 'Creando…' : 'Crear'}
-              </button>
+            <div className="actions-row actions-row-flush">
+              <LoadingButton type="submit" loading={loading} loadingText="Creando…">
+                Crear
+              </LoadingButton>
               <Link href="/dashboard" className="btn btn-secondary">Cancelar</Link>
             </div>
           </form>

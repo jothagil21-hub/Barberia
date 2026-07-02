@@ -1,14 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppNav } from '@/components/AppNav';
 import { AuthGuard } from '@/components/AuthGuard';
 import { EmptyState } from '@/components/EmptyState';
 import { InlineAlert } from '@/components/InlineAlert';
+import { InlineSpinner } from '@/components/InlineSpinner';
 import { LoadingBlock } from '@/components/LoadingBlock';
+import { LoadingButton } from '@/components/LoadingButton';
 import { PageHeader } from '@/components/PageHeader';
+import { PromptDialog } from '@/components/PromptDialog';
+import { SelectField } from '@/components/SelectField';
+import { useBusy } from '@/hooks/useBusy';
 import { useToast } from '@/components/useToast';
 import { api, ApiError, TenantBarber, TenantUser } from '@/lib/api';
 
@@ -16,6 +21,7 @@ export default function TenantUsersPage() {
   const params = useParams();
   const tenantId = params.id as string;
   const { showSuccess, showError } = useToast();
+  const { isBusy, run, isAnyBusy } = useBusy();
 
   const [users, setUsers] = useState<TenantUser[]>([]);
   const [barbers, setBarbers] = useState<TenantBarber[]>([]);
@@ -26,6 +32,7 @@ export default function TenantUsersPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetUser, setResetUser] = useState<TenantUser | null>(null);
 
   function load() {
     return Promise.all([
@@ -42,6 +49,30 @@ export default function TenantUsersPage() {
   }, [tenantId]);
 
   const activeBarbers = barbers.filter((b) => b.active);
+
+  const roleOptions = useMemo(
+    () => [
+      { value: 'owner', label: 'Owner (admin de barbería)' },
+      { value: 'staff', label: 'Staff (solo citas de un barbero)' },
+    ],
+    [],
+  );
+
+  const barberOptions = useMemo(
+    () => [
+      { value: '', label: 'Seleccionar barbero…' },
+      ...activeBarbers.map((b) => ({ value: b.id, label: b.name })),
+    ],
+    [activeBarbers],
+  );
+
+  const tableBarberOptions = useMemo(
+    () => [
+      { value: '', label: 'Sin asignar' },
+      ...activeBarbers.map((b) => ({ value: b.id, label: b.name })),
+    ],
+    [activeBarbers],
+  );
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -73,22 +104,24 @@ export default function TenantUsersPage() {
   }
 
   async function toggleActive(user: TenantUser) {
-    try {
-      await api.patchUser(tenantId, user.id, { active: !user.active });
-      await load();
-      showSuccess(user.active ? 'Usuario desactivado' : 'Usuario activado');
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Error al actualizar usuario';
-      showError(msg);
-    }
+    await run(`${user.id}:toggle`, async () => {
+      try {
+        await api.patchUser(tenantId, user.id, { active: !user.active });
+        await load();
+        showSuccess(user.active ? 'Usuario desactivado' : 'Usuario activado');
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'Error al actualizar usuario';
+        showError(msg);
+      }
+    });
   }
 
-  async function resetPassword(user: TenantUser) {
-    const newPassword = window.prompt(`Nueva contraseña para ${user.username}:`);
-    if (!newPassword) return;
+  async function confirmResetPassword(newPassword: string) {
+    if (!resetUser) return;
     try {
-      await api.patchUser(tenantId, user.id, { password: newPassword });
+      await api.patchUser(tenantId, resetUser.id, { password: newPassword });
       showSuccess('Contraseña actualizada');
+      setResetUser(null);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Error al cambiar contraseña';
       showError(msg);
@@ -96,16 +129,19 @@ export default function TenantUsersPage() {
   }
 
   async function assignStaffBarber(user: TenantUser, nextBarberId: string) {
-    if (!nextBarberId || nextBarberId === user.barberId) return;
-    try {
-      await api.patchUser(tenantId, user.id, { barberId: nextBarberId });
-      await load();
-      showSuccess('Barbero asignado actualizado');
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Error al asignar barbero';
-      showError(msg);
-    }
+    if (nextBarberId === (user.barberId ?? '')) return;
+    await run(`${user.id}:barber`, async () => {
+      try {
+        await api.patchUser(tenantId, user.id, { barberId: nextBarberId || null });
+        await load();
+        showSuccess('Barbero asignado actualizado');
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'Error al asignar barbero';
+        showError(msg);
+      }
+    });
   }
+
   return (
     <AuthGuard>
       <AppNav />
@@ -115,53 +151,54 @@ export default function TenantUsersPage() {
           subtitle="Owner: acceso completo. Staff: solo citas del barbero asignado."
         />
 
-        <div className="card">
+        <div className={`card${saving ? ' card-busy' : ''}`}>
+          {saving && (
+            <div className="card-busy-spinner">
+              <InlineSpinner label="Creando usuario…" />
+            </div>
+          )}
           <h2>Nuevo usuario</h2>
           <form onSubmit={onCreate}>
             <div className="grid-2">
               <div className="field">
                 <label htmlFor="username">Usuario</label>
-                <input id="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+                <input id="username" value={username} onChange={(e) => setUsername(e.target.value)} required disabled={saving} />
               </div>
               <div className="field">
                 <label htmlFor="password">Contraseña</label>
-                <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={saving} />
               </div>
             </div>
-            <div className="field">
-              <label htmlFor="role">Rol</label>
-              <select id="role" value={role} onChange={(e) => setRole(e.target.value as 'owner' | 'staff')}>
-                <option value="owner">Owner (admin de barbería)</option>
-                <option value="staff">Staff (solo citas de un barbero)</option>
-              </select>
-            </div>
+            <SelectField
+              id="role"
+              label="Rol"
+              value={role}
+              onChange={(value) => setRole(value as 'owner' | 'staff')}
+              options={roleOptions}
+              disabled={saving}
+            />
             {role === 'staff' && (
-              <div className="field">
-                <label htmlFor="barberId">Barbero asignado</label>
-                <select
+              <>
+                <SelectField
                   id="barberId"
+                  label="Barbero asignado"
                   value={barberId}
-                  onChange={(e) => setBarberId(e.target.value)}
+                  onChange={setBarberId}
+                  options={barberOptions}
                   required
-                >
-                  <option value="">Seleccionar barbero…</option>
-                  {activeBarbers.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                  disabled={saving}
+                />
                 {activeBarbers.length === 0 && (
-                  <p className="muted" style={{ marginTop: '0.5rem' }}>
+                  <p className="muted field-hint">
                     No hay barberos activos. Créalos desde la app móvil (owner) y sincroniza.
                   </p>
                 )}
-              </div>
+              </>
             )}
             {error && <InlineAlert message={error} />}
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Creando…' : 'Crear usuario'}
-            </button>
+            <LoadingButton type="submit" loading={saving} loadingText="Creando…">
+              Crear usuario
+            </LoadingButton>
           </form>
         </div>
 
@@ -173,7 +210,12 @@ export default function TenantUsersPage() {
             description="Crea el primer usuario para que pueda acceder a la app móvil."
           />
         ) : (
-          <div className="card card-table">
+          <div className={`card card-table${isAnyBusy ? ' card-busy' : ''}`}>
+            {isAnyBusy && (
+              <div className="card-busy-spinner">
+                <InlineSpinner label="Actualizando…" />
+              </div>
+            )}
             <table className="table">
               <thead>
                 <tr>
@@ -191,19 +233,14 @@ export default function TenantUsersPage() {
                     <td>{u.role}</td>
                     <td>
                       {u.role === 'staff' ? (
-                        <select
-                          className="table-select"
+                        <SelectField
+                          compact
                           value={u.barberId ?? ''}
-                          onChange={(e) => assignStaffBarber(u, e.target.value)}
+                          onChange={(value) => void assignStaffBarber(u, value)}
+                          options={tableBarberOptions}
                           aria-label={`Barbero asignado para ${u.username}`}
-                        >
-                          <option value="">Sin asignar</option>
-                          {activeBarbers.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.name}
-                            </option>
-                          ))}
-                        </select>
+                          disabled={isBusy(`${u.id}:barber`) || isAnyBusy}
+                        />
                       ) : (
                         '—'
                       )}
@@ -214,12 +251,24 @@ export default function TenantUsersPage() {
                       </span>
                     </td>
                     <td>
-                      <button type="button" className="btn btn-secondary" style={{ marginRight: '0.5rem', fontSize: '0.8rem' }} onClick={() => toggleActive(u)}>
+                      <LoadingButton
+                        variant="secondary"
+                        className="btn-compact"
+                        loading={isBusy(`${u.id}:toggle`)}
+                        loadingText="…"
+                        disabled={isAnyBusy && !isBusy(`${u.id}:toggle`)}
+                        onClick={() => void toggleActive(u)}
+                      >
                         {u.active ? 'Desactivar' : 'Activar'}
-                      </button>
-                      <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem' }} onClick={() => resetPassword(u)}>
+                      </LoadingButton>
+                      <LoadingButton
+                        variant="secondary"
+                        className="btn-compact"
+                        disabled={isAnyBusy}
+                        onClick={() => setResetUser(u)}
+                      >
                         Reset pass
-                      </button>
+                      </LoadingButton>
                     </td>
                   </tr>
                 ))}
@@ -227,6 +276,18 @@ export default function TenantUsersPage() {
             </table>
           </div>
         )}
+
+        <PromptDialog
+          open={resetUser !== null}
+          title="Restablecer contraseña"
+          description={resetUser ? `Nueva contraseña para ${resetUser.username}.` : undefined}
+          label="Nueva contraseña"
+          inputType="password"
+          confirmLabel="Actualizar"
+          loadingLabel="Actualizando…"
+          onConfirm={confirmResetPassword}
+          onClose={() => setResetUser(null)}
+        />
 
         <Link href={`/tenants/${tenantId}`} className="back-link">← Volver a la barbería</Link>
       </main>

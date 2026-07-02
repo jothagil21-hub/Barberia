@@ -1,12 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppNav } from '@/components/AppNav';
 import { AuthGuard } from '@/components/AuthGuard';
+import { FileUpload } from '@/components/FileUpload';
+import { InlineSpinner } from '@/components/InlineSpinner';
 import { LoadingBlock } from '@/components/LoadingBlock';
+import { LoadingButton } from '@/components/LoadingButton';
 import { PageHeader } from '@/components/PageHeader';
+import { SelectField } from '@/components/SelectField';
+import { TimePicker } from '@/components/TimePicker';
+import { Toggle } from '@/components/Toggle';
 import { useToast } from '@/components/useToast';
 import { api, ApiError, logoSrc, Tenant, TenantSettings } from '@/lib/api';
 
@@ -26,7 +32,14 @@ export default function TenantDetailPage() {
   const [scheduleInterval, setScheduleInterval] = useState(30);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingBasic, setSavingBasic] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  const intervalOptions = useMemo(
+    () => INTERVALS.map((n) => ({ value: String(n), label: `${n} min` })),
+    [],
+  );
 
   useEffect(() => {
     api.getTenant(id)
@@ -54,7 +67,7 @@ export default function TenantDetailPage() {
 
   async function saveBasic(e: FormEvent) {
     e.preventDefault();
-    setSaving(true);
+    setSavingBasic(true);
     try {
       const updated = await api.patchTenant(id, { name, active });
       setTenant(updated);
@@ -63,13 +76,13 @@ export default function TenantDetailPage() {
       const msg = err instanceof ApiError ? err.message : 'Error al guardar';
       showError(`No se pudo guardar: ${msg}`);
     } finally {
-      setSaving(false);
+      setSavingBasic(false);
     }
   }
 
   async function saveSettings(e: FormEvent) {
     e.preventDefault();
-    setSaving(true);
+    setSavingSettings(true);
     try {
       const settings = await api.updateSettings(id, {
         displayName,
@@ -83,13 +96,13 @@ export default function TenantDetailPage() {
       const msg = err instanceof ApiError ? err.message : 'Error al guardar';
       showError(`No se pudo guardar: ${msg}`);
     } finally {
-      setSaving(false);
+      setSavingSettings(false);
     }
   }
 
   async function onLogoChange(file: File | null) {
     if (!file) return;
-    setSaving(true);
+    setUploadingLogo(true);
     try {
       const settings = await api.uploadLogo(id, file);
       applySettings(settings);
@@ -98,9 +111,11 @@ export default function TenantDetailPage() {
       const msg = err instanceof ApiError ? err.message : 'Error al subir logo';
       showError(`No se pudo subir el logo: ${msg}`);
     } finally {
-      setSaving(false);
+      setUploadingLogo(false);
     }
   }
+
+  const formDisabled = savingBasic || savingSettings || uploadingLogo;
 
   if (loading) {
     return (
@@ -147,68 +162,79 @@ export default function TenantDetailPage() {
           }
         />
 
-        <div className="card">
+        <div className={`card${savingBasic ? ' card-busy' : ''}`}>
+          {savingBasic && (
+            <div className="card-busy-spinner">
+              <InlineSpinner label="Guardando…" />
+            </div>
+          )}
           <h2>Datos básicos</h2>
           <form onSubmit={saveBasic}>
             <div className="field">
               <label htmlFor="name">Nombre</label>
-              <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+              <input id="name" value={name} onChange={(e) => setName(e.target.value)} required disabled={formDisabled} />
             </div>
             <div className="field">
-              <label>
-                <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} style={{ marginRight: '0.5rem' }} />
-                Barbería activa
-              </label>
+              <Toggle
+                id="active"
+                checked={active}
+                onChange={setActive}
+                label="Barbería activa"
+                disabled={formDisabled}
+              />
             </div>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar'}
-            </button>
+            <LoadingButton type="submit" loading={savingBasic} loadingText="Guardando…" disabled={formDisabled && !savingBasic}>
+              Guardar
+            </LoadingButton>
           </form>
         </div>
 
-        <div className="card">
+        <div className={`card${savingSettings || uploadingLogo ? ' card-busy' : ''}`}>
+          {(savingSettings || uploadingLogo) && (
+            <div className="card-busy-spinner">
+              <InlineSpinner label={uploadingLogo ? 'Subiendo logo…' : 'Guardando…'} />
+            </div>
+          )}
           <h2>Configuración (branding y agenda)</h2>
           <p className="muted">Equivalente a Configuración en la app móvil — sin sync aún.</p>
           <form onSubmit={saveSettings}>
             <div className="field">
               <label htmlFor="displayName">Nombre visible en app</label>
-              <input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+              <input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required disabled={formDisabled} />
             </div>
             <div className="field">
-              <label>Logo</label>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                {logoPreview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoPreview} alt="Logo" className="logo-preview" />
-                ) : (
-                  <div className="logo-preview muted" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>
-                    Sin logo
-                  </div>
-                )}
-                <input type="file" accept="image/*" onChange={(e) => onLogoChange(e.target.files?.[0] ?? null)} />
-              </div>
+              <FileUpload
+                previewUrl={logoPreview}
+                onChange={onLogoChange}
+                disabled={formDisabled}
+                uploading={uploadingLogo}
+              />
             </div>
             <div className="grid-2">
-              <div className="field">
-                <label htmlFor="start">Hora inicio</label>
-                <input id="start" type="time" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} required />
-              </div>
-              <div className="field">
-                <label htmlFor="end">Hora cierre</label>
-                <input id="end" type="time" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value)} required />
-              </div>
+              <TimePicker
+                id="start"
+                label="Hora inicio"
+                value={scheduleStart}
+                onChange={setScheduleStart}
+              />
+              <TimePicker
+                id="end"
+                label="Hora cierre"
+                value={scheduleEnd}
+                onChange={setScheduleEnd}
+              />
             </div>
-            <div className="field">
-              <label htmlFor="interval">Intervalo de cita (min)</label>
-              <select id="interval" value={scheduleInterval} onChange={(e) => setScheduleInterval(Number(e.target.value))}>
-                {INTERVALS.map((n) => (
-                  <option key={n} value={n}>{n} min</option>
-                ))}
-              </select>
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar configuración'}
-            </button>
+            <SelectField
+              id="interval"
+              label="Intervalo de cita (min)"
+              value={String(scheduleInterval)}
+              onChange={(value) => setScheduleInterval(Number(value))}
+              options={intervalOptions}
+              disabled={formDisabled}
+            />
+            <LoadingButton type="submit" loading={savingSettings} loadingText="Guardando…" disabled={formDisabled && !savingSettings}>
+              Guardar configuración
+            </LoadingButton>
           </form>
         </div>
 
