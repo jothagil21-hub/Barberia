@@ -230,6 +230,27 @@ select:focus-visible {
 
 .table tbody tr:last-child td { border-bottom: none; }
 
+.table select,
+select.table-select {
+  width: 100%;
+  min-width: 10rem;
+  max-width: 14rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease;
+  cursor: pointer;
+}
+
+.table select:focus,
+select.table-select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
 
 
 .badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }

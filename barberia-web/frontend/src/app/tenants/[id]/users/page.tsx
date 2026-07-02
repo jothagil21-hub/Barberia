@@ -192,9 +192,10 @@ export default function TenantUsersPage() {
                     <td>
                       {u.role === 'staff' ? (
                         <select
+                          className="table-select"
                           value={u.barberId ?? ''}
                           onChange={(e) => assignStaffBarber(u, e.target.value)}
-                          style={{ fontSize: '0.85rem' }}
+                          aria-label={`Barbero asignado para ${u.username}`}
                         >
                           <option value="">Sin asignar</option>
                           {activeBarbers.map((b) => (
