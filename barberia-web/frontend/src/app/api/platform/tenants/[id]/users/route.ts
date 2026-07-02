@@ -3,14 +3,33 @@ import { z } from 'zod';
 import { prisma } from '@/lib/server/prisma';
 import { badRequest, notFound, routeParams, withPlatformAdmin } from '@/lib/server/route-helpers';
 import { toPublicUser } from '@/lib/server/tenants/format';
+import { assertActiveBarberForTenant } from '@/lib/server/tenants/validateBarber';
 
 export const runtime = 'nodejs';
 
-const createUserSchema = z.object({
-  username: z.string().min(1).max(60),
-  password: z.string().min(4).max(120),
-  role: z.enum(['owner', 'staff']).default('staff'),
-});
+const createUserSchema = z
+  .object({
+    username: z.string().min(1).max(60),
+    password: z.string().min(4).max(120),
+    role: z.enum(['owner', 'staff']).default('staff'),
+    barberId: z.string().uuid().nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === 'staff' && !data.barberId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'El rol staff requiere un barbero asignado',
+        path: ['barberId'],
+      });
+    }
+    if (data.role === 'owner' && data.barberId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'El rol owner no debe tener barbero asignado',
+        path: ['barberId'],
+      });
+    }
+  });
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -49,12 +68,21 @@ export async function POST(request: Request, context: Ctx) {
       return Response.json({ error: 'Ese usuario ya existe en esta barbería' }, { status: 409 });
     }
 
+    if (parsed.data.role === 'staff' && parsed.data.barberId) {
+      try {
+        await assertActiveBarberForTenant(tenant.id, parsed.data.barberId);
+      } catch (e) {
+        return badRequest(e instanceof Error ? e.message : 'Barbero inválido');
+      }
+    }
+
     const user = await prisma.tenantUser.create({
       data: {
         tenantId: tenant.id,
         username: parsed.data.username,
         passwordHash: await bcrypt.hash(parsed.data.password, 10),
         role: parsed.data.role,
+        barberId: parsed.data.role === 'staff' ? parsed.data.barberId : null,
       },
     });
 

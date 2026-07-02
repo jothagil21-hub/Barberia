@@ -38,6 +38,13 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Usuario o contraseña incorrectos' }, { status: 401 });
   }
 
+  if (user.role === 'staff' && !user.barberId) {
+    return Response.json(
+      { error: 'Usuario staff sin barbero asignado. Contacta al administrador del panel.' },
+      { status: 403 },
+    );
+  }
+
   const token = await signTenantToken({
     sub: user.id,
     username: user.username,
@@ -58,6 +65,7 @@ export async function POST(request: Request) {
       username: user.username,
       role: user.role,
       active: user.active,
+      barberId: user.barberId,
     },
   });
 }

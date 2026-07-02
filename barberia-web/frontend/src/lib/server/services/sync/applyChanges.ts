@@ -4,6 +4,12 @@ import { rangesOverlap } from '@/lib/server/utils/appointmentSlots';
 import { validateServiceDuration } from '@/lib/server/utils/serviceDuration';
 import { validateScheduleConfig } from '@/lib/server/utils/schedule';
 import { buildPullBundle, parseAppointmentStatus } from '@/lib/server/services/sync/buildPull';
+import {
+  isStaff,
+  staffBarberScopeConflict,
+  staffForbiddenConflict,
+  type SyncActor,
+} from '@/lib/server/services/sync/staffPermissions';
 import type {
   AppliedIds,
   SyncChanges,
@@ -153,7 +159,15 @@ async function upsertAppointment(
   item: UpsertAppointment,
   applied: AppliedIds,
   conflicts: SyncConflict[],
+  actor?: SyncActor,
 ) {
+  if (actor && isStaff(actor)) {
+    if (!actor.barberId || item.barberId !== actor.barberId) {
+      conflicts.push(staffBarberScopeConflict(item.clientId, item.id));
+      return;
+    }
+  }
+
   const status = parseAppointmentStatus(item.status);
 
   if (status === 'scheduled') {
@@ -188,6 +202,10 @@ async function upsertAppointment(
         serverId: item.id,
         reason: 'Cita no encontrada',
       });
+      return;
+    }
+    if (actor && isStaff(actor) && existing.barberId !== actor.barberId) {
+      conflicts.push(staffBarberScopeConflict(item.clientId, item.id));
       return;
     }
     if (!isNewer(item.updatedAt, existing.updatedAt)) return;
@@ -465,7 +483,7 @@ async function applySettings(
 
 export async function applySyncChanges(
   tenantId: string,
-  role: TenantUserRole,
+  actor: SyncActor,
   changes: SyncChanges,
   since?: Date,
 ): Promise<SyncPostResult> {
@@ -477,27 +495,49 @@ export async function applySyncChanges(
     posInvoices: {},
   };
   const conflicts: SyncConflict[] = [];
+  const staff = isStaff(actor);
 
-  for (const item of changes.barbers ?? []) {
-    await upsertBarber(tenantId, item, applied, conflicts);
-  }
-  for (const item of changes.services ?? []) {
-    await upsertService(tenantId, item, applied, conflicts);
-  }
-  for (const item of changes.appointments ?? []) {
-    await upsertAppointment(tenantId, item, applied, conflicts);
-  }
-  for (const item of changes.scheduleBlocks ?? []) {
-    await upsertScheduleBlock(tenantId, item, applied, conflicts);
-  }
-  for (const item of changes.posInvoices ?? []) {
-    await upsertPosInvoice(tenantId, item, applied, conflicts);
-  }
-  if (changes.settings) {
-    await applySettings(tenantId, role, changes.settings, conflicts);
+  if (staff) {
+    for (const item of changes.barbers ?? []) {
+      conflicts.push(staffForbiddenConflict('barber', item.clientId, item.id));
+    }
+    for (const item of changes.services ?? []) {
+      conflicts.push(staffForbiddenConflict('service', item.clientId, item.id));
+    }
+    for (const item of changes.scheduleBlocks ?? []) {
+      conflicts.push(staffForbiddenConflict('scheduleBlock', item.clientId, item.id));
+    }
+    for (const item of changes.posInvoices ?? []) {
+      conflicts.push(staffForbiddenConflict('posInvoice', item.clientId, item.id));
+    }
+    if (changes.settings) {
+      conflicts.push(staffForbiddenConflict('settings'));
+    }
+    for (const item of changes.appointments ?? []) {
+      await upsertAppointment(tenantId, item, applied, conflicts, actor);
+    }
+  } else {
+    for (const item of changes.barbers ?? []) {
+      await upsertBarber(tenantId, item, applied, conflicts);
+    }
+    for (const item of changes.services ?? []) {
+      await upsertService(tenantId, item, applied, conflicts);
+    }
+    for (const item of changes.appointments ?? []) {
+      await upsertAppointment(tenantId, item, applied, conflicts, actor);
+    }
+    for (const item of changes.scheduleBlocks ?? []) {
+      await upsertScheduleBlock(tenantId, item, applied, conflicts);
+    }
+    for (const item of changes.posInvoices ?? []) {
+      await upsertPosInvoice(tenantId, item, applied, conflicts);
+    }
+    if (changes.settings) {
+      await applySettings(tenantId, actor.role, changes.settings, conflicts);
+    }
   }
 
-  const pull = await buildPullBundle(tenantId, since);
+  const pull = await buildPullBundle(tenantId, since, actor);
 
   return {
     serverTime: pull.serverTime,

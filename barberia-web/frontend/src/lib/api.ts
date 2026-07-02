@@ -45,7 +45,15 @@ export type TenantUser = {
   username: string;
   role: 'owner' | 'staff';
   active: boolean;
+  barberId: string | null;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type TenantBarber = {
+  id: string;
+  name: string;
+  active: boolean;
   updatedAt: string;
 };
 
@@ -190,9 +198,17 @@ export const api = {
   listUsers: (tenantId: string) =>
     request<TenantUser[]>(`/api/platform/tenants/${tenantId}/users`),
 
+  listBarbers: (tenantId: string) =>
+    request<{ barbers: TenantBarber[] }>(`/api/platform/tenants/${tenantId}/barbers`),
+
   createUser: (
     tenantId: string,
-    data: { username: string; password: string; role: 'owner' | 'staff' },
+    data: {
+      username: string;
+      password: string;
+      role: 'owner' | 'staff';
+      barberId?: string | null;
+    },
   ) =>
     request<TenantUser>(`/api/platform/tenants/${tenantId}/users`, {
       method: 'POST',
@@ -202,7 +218,12 @@ export const api = {
   patchUser: (
     tenantId: string,
     userId: string,
-    data: { active?: boolean; role?: 'owner' | 'staff'; password?: string },
+    data: {
+      active?: boolean;
+      role?: 'owner' | 'staff';
+      password?: string;
+      barberId?: string | null;
+    },
   ) =>
     request<TenantUser>(`/api/platform/tenants/${tenantId}/users/${userId}`, {
       method: 'PATCH',

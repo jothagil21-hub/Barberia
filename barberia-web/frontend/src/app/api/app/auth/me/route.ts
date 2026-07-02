@@ -14,6 +14,13 @@ export async function GET(request: Request) {
       return Response.json({ error: 'Sesión inválida' }, { status: 401 });
     }
 
+    if (user.role === 'staff' && !user.barberId) {
+      return Response.json(
+        { error: 'Usuario staff sin barbero asignado' },
+        { status: 403 },
+      );
+    }
+
     return Response.json({
       tenant: {
         id: user.tenant.id,
@@ -26,6 +33,7 @@ export async function GET(request: Request) {
         username: user.username,
         role: user.role,
         active: user.active,
+        barberId: user.barberId,
       },
     });
   });

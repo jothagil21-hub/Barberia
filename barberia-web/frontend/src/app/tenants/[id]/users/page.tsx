@@ -10,7 +10,7 @@ import { InlineAlert } from '@/components/InlineAlert';
 import { LoadingBlock } from '@/components/LoadingBlock';
 import { PageHeader } from '@/components/PageHeader';
 import { useToast } from '@/components/useToast';
-import { api, ApiError, TenantUser } from '@/lib/api';
+import { api, ApiError, TenantBarber, TenantUser } from '@/lib/api';
 
 export default function TenantUsersPage() {
   const params = useParams();
@@ -18,34 +18,49 @@ export default function TenantUsersPage() {
   const { showSuccess, showError } = useToast();
 
   const [users, setUsers] = useState<TenantUser[]>([]);
+  const [barbers, setBarbers] = useState<TenantBarber[]>([]);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'owner' | 'staff'>('owner');
+  const [barberId, setBarberId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   function load() {
-    return api.listUsers(tenantId)
-      .then(setUsers)
-      .catch((err) => {
-        const msg = err instanceof ApiError ? err.message : 'Error al cargar usuarios';
-        showError(msg);
-      });
+    return Promise.all([
+      api.listUsers(tenantId).then(setUsers),
+      api.listBarbers(tenantId).then((res) => setBarbers(res.barbers)),
+    ]).catch((err) => {
+      const msg = err instanceof ApiError ? err.message : 'Error al cargar usuarios';
+      showError(msg);
+    });
   }
 
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [tenantId]);
 
+  const activeBarbers = barbers.filter((b) => b.active);
+
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setError('');
+    if (role === 'staff' && !barberId) {
+      setError('Selecciona el barbero que gestionará este usuario staff.');
+      return;
+    }
     setSaving(true);
     try {
-      await api.createUser(tenantId, { username, password, role });
+      await api.createUser(tenantId, {
+        username,
+        password,
+        role,
+        barberId: role === 'staff' ? barberId : null,
+      });
       setUsername('');
       setPassword('');
+      setBarberId('');
       await load();
       showSuccess('Usuario creado');
     } catch (err) {
@@ -80,13 +95,24 @@ export default function TenantUsersPage() {
     }
   }
 
+  async function assignStaffBarber(user: TenantUser, nextBarberId: string) {
+    if (!nextBarberId || nextBarberId === user.barberId) return;
+    try {
+      await api.patchUser(tenantId, user.id, { barberId: nextBarberId });
+      await load();
+      showSuccess('Barbero asignado actualizado');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Error al asignar barbero';
+      showError(msg);
+    }
+  }
   return (
     <AuthGuard>
       <AppNav />
       <main className="container">
         <PageHeader
           title="Usuarios de app"
-          subtitle="Credenciales para la app móvil cuando exista sync. La app en pruebas no se modifica."
+          subtitle="Owner: acceso completo. Staff: solo citas del barbero asignado."
         />
 
         <div className="card">
@@ -106,9 +132,32 @@ export default function TenantUsersPage() {
               <label htmlFor="role">Rol</label>
               <select id="role" value={role} onChange={(e) => setRole(e.target.value as 'owner' | 'staff')}>
                 <option value="owner">Owner (admin de barbería)</option>
-                <option value="staff">Staff (barbero / recepción)</option>
+                <option value="staff">Staff (solo citas de un barbero)</option>
               </select>
             </div>
+            {role === 'staff' && (
+              <div className="field">
+                <label htmlFor="barberId">Barbero asignado</label>
+                <select
+                  id="barberId"
+                  value={barberId}
+                  onChange={(e) => setBarberId(e.target.value)}
+                  required
+                >
+                  <option value="">Seleccionar barbero…</option>
+                  {activeBarbers.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                {activeBarbers.length === 0 && (
+                  <p className="muted" style={{ marginTop: '0.5rem' }}>
+                    No hay barberos activos. Créalos desde la app móvil (owner) y sincroniza.
+                  </p>
+                )}
+              </div>
+            )}
             {error && <InlineAlert message={error} />}
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Creando…' : 'Crear usuario'}
@@ -130,6 +179,7 @@ export default function TenantUsersPage() {
                 <tr>
                   <th>Usuario</th>
                   <th>Rol</th>
+                  <th>Barbero</th>
                   <th>Estado</th>
                   <th>Acciones</th>
                 </tr>
@@ -139,6 +189,24 @@ export default function TenantUsersPage() {
                   <tr key={u.id}>
                     <td>{u.username}</td>
                     <td>{u.role}</td>
+                    <td>
+                      {u.role === 'staff' ? (
+                        <select
+                          value={u.barberId ?? ''}
+                          onChange={(e) => assignStaffBarber(u, e.target.value)}
+                          style={{ fontSize: '0.85rem' }}
+                        >
+                          <option value="">Sin asignar</option>
+                          {activeBarbers.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td>
                       <span className={u.active ? 'badge badge-active' : 'badge badge-inactive'}>
                         {u.active ? 'Activo' : 'Inactivo'}

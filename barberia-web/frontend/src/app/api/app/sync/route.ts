@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { applySyncChanges } from '@/lib/server/services/sync/applyChanges';
 import { buildPullBundle } from '@/lib/server/services/sync/buildPull';
+import { loadSyncActor } from '@/lib/server/services/sync/staffPermissions';
 import { validateServiceDuration } from '@/lib/server/utils/serviceDuration';
 import { badRequest, notFound, withTenantUser } from '@/lib/server/route-helpers';
 
@@ -109,11 +110,19 @@ export async function GET(request: Request) {
   return withTenantUser(request, async (_request, user) => {
     const url = new URL(request.url);
     const since = parseSince(url.searchParams.get('since'));
+    const actor = await loadSyncActor(user.sub);
+    if (!actor) {
+      return Response.json({ error: 'Sesión inválida' }, { status: 401 });
+    }
 
     try {
-      const bundle = await buildPullBundle(user.tenantId, since);
+      const bundle = await buildPullBundle(user.tenantId, since, actor);
       return Response.json(bundle);
-    } catch {
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Barbería no encontrada';
+      if (message.includes('sin barbero asignado')) {
+        return badRequest(message);
+      }
       return notFound('Barbería no encontrada');
     }
   });
@@ -144,11 +153,15 @@ export async function POST(request: Request) {
     }
 
     const since = parseSince(parsed.data.since);
+    const actor = await loadSyncActor(user.sub);
+    if (!actor) {
+      return Response.json({ error: 'Sesión inválida' }, { status: 401 });
+    }
 
     try {
       const result = await applySyncChanges(
         user.tenantId,
-        user.role,
+        actor,
         parsed.data.changes,
         since,
       );

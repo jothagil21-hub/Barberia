@@ -1,5 +1,7 @@
 import type { AppointmentStatus } from '@prisma/client';
 import { prisma } from '@/lib/server/prisma';
+import type { SyncActor } from '@/lib/server/services/sync/staffPermissions';
+import { isStaff } from '@/lib/server/services/sync/staffPermissions';
 import type { PosInvoiceLine, SyncPullBundle } from '@/lib/server/services/sync/types';
 
 function toIso(d: Date) {
@@ -9,8 +11,15 @@ function toIso(d: Date) {
 export async function buildPullBundle(
   tenantId: string,
   since?: Date,
+  actor?: SyncActor,
 ): Promise<SyncPullBundle> {
   const sinceFilter = since ? { gt: since } : undefined;
+  const staff = actor && isStaff(actor);
+  const staffBarberId = staff ? actor.barberId : null;
+
+  if (staff && !staffBarberId) {
+    throw new Error('Usuario staff sin barbero asignado');
+  }
 
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
@@ -30,7 +39,11 @@ export async function buildPullBundle(
 
   const [barbers, services, appointments, scheduleBlocks, posInvoices] = await Promise.all([
     prisma.barber.findMany({
-      where: { tenantId, ...(sinceFilter ? { updatedAt: sinceFilter } : {}) },
+      where: {
+        tenantId,
+        ...(staffBarberId ? { id: staffBarberId } : {}),
+        ...(sinceFilter ? { updatedAt: sinceFilter } : {}),
+      },
       orderBy: { updatedAt: 'asc' },
     }),
     prisma.service.findMany({
@@ -38,18 +51,28 @@ export async function buildPullBundle(
       orderBy: { updatedAt: 'asc' },
     }),
     prisma.appointment.findMany({
-      where: { tenantId, ...(sinceFilter ? { updatedAt: sinceFilter } : {}) },
+      where: {
+        tenantId,
+        ...(staffBarberId ? { barberId: staffBarberId } : {}),
+        ...(sinceFilter ? { updatedAt: sinceFilter } : {}),
+      },
       include: { services: true },
       orderBy: { updatedAt: 'asc' },
     }),
     prisma.scheduleBlock.findMany({
-      where: { tenantId, ...(sinceFilter ? { updatedAt: sinceFilter } : {}) },
+      where: {
+        tenantId,
+        ...(staffBarberId ? { barberId: staffBarberId } : {}),
+        ...(sinceFilter ? { updatedAt: sinceFilter } : {}),
+      },
       orderBy: { updatedAt: 'asc' },
     }),
-    prisma.posInvoice.findMany({
-      where: { tenantId, ...(sinceFilter ? { updatedAt: sinceFilter } : {}) },
-      orderBy: { updatedAt: 'asc' },
-    }),
+    staff
+      ? Promise.resolve([])
+      : prisma.posInvoice.findMany({
+          where: { tenantId, ...(sinceFilter ? { updatedAt: sinceFilter } : {}) },
+          orderBy: { updatedAt: 'asc' },
+        }),
   ]);
 
   const includeSettings =

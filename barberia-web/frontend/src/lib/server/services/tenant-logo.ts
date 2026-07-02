@@ -5,6 +5,31 @@ import { prisma } from '@/lib/server/prisma';
 
 const ALLOWED_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
+const EXT_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
+function resolveImageMime(file: File): string {
+  if (file.type && ALLOWED_MIME.includes(file.type)) {
+    return file.type;
+  }
+
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.webp')) return 'image/webp';
+  if (name.endsWith('.gif')) return 'image/gif';
+
+  throw new Error('Tipo de imagen no permitido');
+}
+
+function mimeToExt(mime: string): string {
+  return EXT_BY_MIME[mime] ?? 'png';
+}
+
 export function getUploadDir(): string {
   return process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads');
 }
@@ -71,11 +96,8 @@ async function saveToFilesystem(tenantId: string, ext: string, buffer: Buffer) {
 }
 
 export async function saveTenantLogo(tenantId: string, file: File) {
-  if (!ALLOWED_MIME.includes(file.type)) {
-    throw new Error('Tipo de imagen no permitido');
-  }
-
-  const ext = file.type.split('/')[1] ?? 'png';
+  const mime = resolveImageMime(file);
+  const ext = mimeToExt(mime);
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const existing = await prisma.tenantSettings.findUnique({ where: { tenantId } });

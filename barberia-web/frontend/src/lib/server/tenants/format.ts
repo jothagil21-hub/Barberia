@@ -31,6 +31,7 @@ export function toPublicUser(user: {
   username: string;
   role: string;
   active: boolean;
+  barberId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -39,6 +40,7 @@ export function toPublicUser(user: {
     username: user.username,
     role: user.role,
     active: user.active,
+    barberId: user.barberId ?? null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

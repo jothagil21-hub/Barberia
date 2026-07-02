@@ -130,6 +130,8 @@ model TenantUser {
 
   role         TenantUserRole @default(staff)
 
+  barberId     String?        @map("barber_id")
+
   active       Boolean        @default(true)
 
   createdAt    DateTime       @default(now()) @map("created_at")
@@ -139,6 +141,8 @@ model TenantUser {
 
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  barber Barber? @relation(fields: [barberId], references: [id], onDelete: SetNull)
 
 
 
@@ -169,6 +173,8 @@ model Barber {
   appointments     Appointment[]
 
   scheduleBlocks   ScheduleBlock[]
+
+  assignedUsers    TenantUser[]
 
 
 
