@@ -4,7 +4,20 @@
  */
 import { getToken } from './auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+/** URL base del API. Vacío = mismo origen (Next.js / Vercel). */
+export function getApiBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+  if (configured && configured.trim() !== '') {
+    return configured.replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    return '';
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return 'http://localhost:3000';
+}
 
 export type Tenant = {
   id: string;
@@ -114,7 +127,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${getApiBaseUrl()}${path}`, { ...options, headers });
   if (!res.ok) {
     let message = res.statusText;
     try {
@@ -216,5 +229,6 @@ export const api = {
 export function logoSrc(logoUrl: string | null | undefined): string | null {
   if (!logoUrl) return null;
   if (logoUrl.startsWith('http')) return logoUrl;
-  return `${API_URL}${logoUrl}`;
+  const base = getApiBaseUrl();
+  return base ? `${base}${logoUrl}` : logoUrl;
 }
