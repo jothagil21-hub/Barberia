@@ -46,6 +46,32 @@
 
 
 
+[data-theme="dark"] {
+
+  --canvas: #121212;
+
+  --bg: var(--canvas);
+
+  --surface: #1C1C1C;
+
+  --surface-hover: #2A2A2A;
+
+  --surface-dark: #0E0E0E;
+
+  --border: #3A3A3A;
+
+  --text: #F5F4F1;
+
+  --text-muted: #A8A29E;
+
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+
+  --brand-gold-muted: rgba(201, 169, 98, 0.24);
+
+}
+
+
+
 * { box-sizing: border-box; }
 
 
@@ -344,6 +370,25 @@ select.table-select:focus {
 .nav-brand { font-weight: 700; color: var(--accent); font-size: 1.05rem; }
 
 .nav-actions { display: flex; gap: 0.85rem; align-items: center; }
+
+
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-inline: 0.75rem;
+}
+
+.theme-toggle-label {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .theme-toggle-label {
+    display: none;
+  }
+}
 
 
 
@@ -665,11 +710,19 @@ select.table-select:focus {
 }
 
 .login-form-panel {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem 1.5rem;
   background: var(--surface);
+}
+
+.login-form-toolbar {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
 }
 
 .login-form-inner {
@@ -1481,6 +1534,19 @@ select.table-select:focus {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 3;
+}
+
+[data-theme="dark"] .btn-loading::before {
+  border-color: rgba(245, 244, 241, 0.2);
+  border-top-color: var(--text);
+}
+
+[data-theme="dark"] .card-busy::after {
+  background: rgba(18, 18, 18, 0.65);
+}
+
+[data-theme="dark"] .badge-warning {
+  color: var(--brand-gold);
 }
 
 @media (max-width: 640px) {

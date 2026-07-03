@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { BrandLogo } from '@/components/BrandLogo';
 import { InlineAlert } from '@/components/InlineAlert';
 import { LoadingButton } from '@/components/LoadingButton';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { useToast } from '@/components/useToast';
 import { api, ApiError } from '@/lib/api';
 import { setSession } from '@/lib/auth';
@@ -90,6 +91,9 @@ export default function LoginPage() {
       </aside>
 
       <main className="login-form-panel">
+        <div className="login-form-toolbar">
+          <ThemeToggle />
+        </div>
         <div className="login-form-inner">
           <header className="login-form-header">
             <h2>Iniciar sesión</h2>
