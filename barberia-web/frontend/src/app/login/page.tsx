@@ -12,9 +12,9 @@ import { setSession } from '@/lib/auth';
 const isDev = process.env.NODE_ENV === 'development';
 
 const FEATURES = [
-  'Gestiona barberías multi-tenant',
+  'Gestiona barberías',
   'Citas sincronizadas en tiempo real',
-  'Panel centralizado para owners y staff',
+  'Panel centralizado para administrador y barberos',
 ];
 
 function UserIcon() {

@@ -12,6 +12,7 @@ import {
 } from '@/lib/server/services/sync/staffPermissions';
 import type {
   AppliedIds,
+  PosInvoiceLine,
   SyncChanges,
   SyncConflict,
   SyncPostResult,
@@ -154,6 +155,54 @@ async function upsertService(
   if (item.clientId) applied.services[item.clientId] = created.id;
 }
 
+async function ensurePosInvoiceForAttendedAppointment(
+  tenantId: string,
+  appointmentId: string,
+) {
+  const existing = await prisma.posInvoice.findUnique({
+    where: { appointmentId },
+  });
+  if (existing) return;
+
+  const appointment = await prisma.appointment.findFirst({
+    where: { id: appointmentId, tenantId, status: 'attended' },
+    include: {
+      services: { include: { service: true } },
+      barber: true,
+    },
+  });
+  if (!appointment) return;
+
+  const lines: PosInvoiceLine[] = appointment.services.map((line) => ({
+    serviceName: line.service.name,
+    durationMinutes: line.durationMinutes,
+    unitPrice: line.unitPrice,
+    lineTotal: line.unitPrice,
+  }));
+  const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+
+  const maxNumber = await prisma.posInvoice.aggregate({
+    where: { tenantId },
+    _max: { number: true },
+  });
+  const number = (maxNumber._max.number ?? 0) + 1;
+  const now = new Date();
+
+  await prisma.posInvoice.create({
+    data: {
+      tenantId,
+      appointmentId,
+      number,
+      issuedAt: now,
+      clientName: appointment.clientName,
+      barberName: appointment.barber.name,
+      subtotal,
+      lines,
+      updatedAt: now,
+    },
+  });
+}
+
 async function upsertAppointment(
   tenantId: string,
   item: UpsertAppointment,
@@ -208,7 +257,12 @@ async function upsertAppointment(
       conflicts.push(staffBarberScopeConflict(item.clientId, item.id));
       return;
     }
-    if (!isNewer(item.updatedAt, existing.updatedAt)) return;
+    if (!isNewer(item.updatedAt, existing.updatedAt)) {
+      if (existing.status === 'attended') {
+        await ensurePosInvoiceForAttendedAppointment(tenantId, existing.id);
+      }
+      return;
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.appointment.update({
@@ -237,6 +291,9 @@ async function upsertAppointment(
       }
     });
     if (item.clientId) applied.appointments[item.clientId] = existing.id;
+    if (status === 'attended') {
+      await ensurePosInvoiceForAttendedAppointment(tenantId, existing.id);
+    }
     return;
   }
 
@@ -262,6 +319,9 @@ async function upsertAppointment(
     },
   });
   if (item.clientId) applied.appointments[item.clientId] = created.id;
+  if (status === 'attended') {
+    await ensurePosInvoiceForAttendedAppointment(tenantId, created.id);
+  }
 }
 
 async function upsertPosInvoice(
@@ -269,6 +329,7 @@ async function upsertPosInvoice(
   item: UpsertPosInvoice,
   applied: AppliedIds,
   conflicts: SyncConflict[],
+  actor?: SyncActor,
 ) {
   const appointment = await prisma.appointment.findFirst({
     where: { id: item.appointmentId, tenantId },
@@ -290,6 +351,12 @@ async function upsertPosInvoice(
       reason: 'Solo se emiten comprobantes para citas con asistencia',
     });
     return;
+  }
+  if (actor && isStaff(actor)) {
+    if (!actor.barberId || appointment.barberId !== actor.barberId) {
+      conflicts.push(staffBarberScopeConflict(item.clientId, item.id));
+      return;
+    }
   }
 
   const existingByAppointment = await prisma.posInvoice.findUnique({
@@ -443,6 +510,10 @@ async function applySettings(
 
   const currentUpdated = tenant.settings.updatedAt;
   if (settings.updatedAt && !isNewer(settings.updatedAt, currentUpdated)) {
+    conflicts.push({
+      entity: 'settings',
+      reason: 'La configuración del servidor es más reciente',
+    });
     return;
   }
 
@@ -507,14 +578,14 @@ export async function applySyncChanges(
     for (const item of changes.scheduleBlocks ?? []) {
       conflicts.push(staffForbiddenConflict('scheduleBlock', item.clientId, item.id));
     }
-    for (const item of changes.posInvoices ?? []) {
-      conflicts.push(staffForbiddenConflict('posInvoice', item.clientId, item.id));
-    }
     if (changes.settings) {
       conflicts.push(staffForbiddenConflict('settings'));
     }
     for (const item of changes.appointments ?? []) {
       await upsertAppointment(tenantId, item, applied, conflicts, actor);
+    }
+    for (const item of changes.posInvoices ?? []) {
+      await upsertPosInvoice(tenantId, item, applied, conflicts, actor);
     }
   } else {
     for (const item of changes.barbers ?? []) {
@@ -530,7 +601,7 @@ export async function applySyncChanges(
       await upsertScheduleBlock(tenantId, item, applied, conflicts);
     }
     for (const item of changes.posInvoices ?? []) {
-      await upsertPosInvoice(tenantId, item, applied, conflicts);
+      await upsertPosInvoice(tenantId, item, applied, conflicts, actor);
     }
     if (changes.settings) {
       await applySettings(tenantId, actor.role, changes.settings, conflicts);

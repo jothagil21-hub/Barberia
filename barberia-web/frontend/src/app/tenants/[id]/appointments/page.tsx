@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppNav } from '@/components/AppNav';
 import { AuthGuard } from '@/components/AuthGuard';
-import { DatePicker } from '@/components/DatePicker';
 import { EmptyState } from '@/components/EmptyState';
 import { InlineSpinner } from '@/components/InlineSpinner';
 import { LoadingBlock } from '@/components/LoadingBlock';
@@ -136,7 +135,15 @@ export default function TenantAppointmentsPage() {
           subtitle="Agenda del día por barbero (solo lectura, sincronizada desde la app)."
           actions={
             <>
-              <DatePicker value={date} onChange={setDate} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="muted">Fecha</span>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  aria-label="Fecha"
+                />
+              </label>
               <LoadingButton
                 variant="secondary"
                 loading={refreshing}

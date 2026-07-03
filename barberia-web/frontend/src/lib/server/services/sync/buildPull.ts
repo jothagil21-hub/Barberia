@@ -67,12 +67,14 @@ export async function buildPullBundle(
       },
       orderBy: { updatedAt: 'asc' },
     }),
-    staff
-      ? Promise.resolve([])
-      : prisma.posInvoice.findMany({
-          where: { tenantId, ...(sinceFilter ? { updatedAt: sinceFilter } : {}) },
-          orderBy: { updatedAt: 'asc' },
-        }),
+    prisma.posInvoice.findMany({
+      where: {
+        tenantId,
+        ...(staffBarberId ? { appointment: { barberId: staffBarberId } } : {}),
+        ...(sinceFilter ? { updatedAt: sinceFilter } : {}),
+      },
+      orderBy: { updatedAt: 'asc' },
+    }),
   ]);
 
   const includeSettings =
