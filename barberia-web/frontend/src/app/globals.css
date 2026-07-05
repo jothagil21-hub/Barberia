@@ -1549,6 +1549,102 @@ select.table-select:focus {
   color: var(--brand-gold);
 }
 
+/* —— App download page —— */
+
+.download-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem 3rem;
+  background:
+    radial-gradient(circle at 15% 10%, var(--brand-gold-muted), transparent 42%),
+    var(--bg);
+}
+
+.download-page-toolbar {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 10;
+}
+
+.download-card {
+  width: 100%;
+  max-width: 28rem;
+  text-align: center;
+}
+
+.download-title {
+  margin: 1rem 0 0.35rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.download-subtitle {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.download-version {
+  margin: 0 0 1.25rem;
+  font-size: 0.85rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.download-status {
+  margin: 0 0 1rem;
+}
+
+.download-alert {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-hover);
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.download-alert code {
+  font-size: 0.8rem;
+}
+
+.download-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+}
+
+.download-steps {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+
+.download-steps h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.download-steps ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.download-footer-links {
+  margin: 1.25rem 0 0;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 640px) {
 
   .toast-container {

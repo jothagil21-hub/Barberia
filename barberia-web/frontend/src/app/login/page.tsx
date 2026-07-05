@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BrandLogo } from '@/components/BrandLogo';
 import { InlineAlert } from '@/components/InlineAlert';
@@ -139,7 +140,11 @@ export default function LoginPage() {
             </LoadingButton>
           </form>
 
-          <footer className="login-footer">BarberiaApp © 2026</footer>
+          <footer className="login-footer">
+            BarberiaApp © 2026
+            {' · '}
+            <Link href="/download">Descargar app móvil</Link>
+          </footer>
         </div>
       </main>
     </div>
