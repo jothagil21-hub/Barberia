@@ -17,6 +17,7 @@ class HomeScreen extends ConsumerWidget {
     final selectedDate = ref.watch(selectedDateProvider);
     final appointmentsAsync = ref.watch(appointmentsForDateProvider);
     final scheduleConfig = ref.watch(scheduleConfigProvider);
+    final isOwner = ref.watch(authProvider).value?.isOwner ?? true;
 
     return Scaffold(
       body: Column(
@@ -27,28 +28,29 @@ class HomeScreen extends ConsumerWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: BarberSelector(),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(child: BarberSelector()),
+                if (isOwner) ...[
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: 'Bloquear horarios',
+                    onPressed: () => context.push('/schedule-block'),
+                    icon: const Icon(Icons.block),
+                  ),
+                ],
+              ],
+            ),
           ),
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: DateSelector(
-                    selectedDate: selectedDate,
-                    allowPastDates: true,
-                    onDateChanged: (date) {
-                      ref.read(selectedDateProvider.notifier).setDate(date);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
-                  tooltip: 'Bloquear horarios',
-                  onPressed: () => context.push('/schedule-block'),
-                  icon: const Icon(Icons.block),
-                ),
-              ],
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: DateSelector(
+              selectedDate: selectedDate,
+              allowPastDates: true,
+              onDateChanged: (date) {
+                ref.read(selectedDateProvider.notifier).setDate(date);
+              },
             ),
           ),
           appointmentsAsync.when(

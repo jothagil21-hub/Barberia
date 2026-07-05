@@ -11,6 +11,7 @@ import '../../data/database/schema.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../api/api_models.dart';
 import '../../widgets/shop_logo.dart';
+import 'sync_session_store.dart';
 import 'sync_tracker.dart';
 
 class _StoredLogoMeta {
@@ -26,10 +27,21 @@ class _StoredLogoMeta {
 }
 
 class SyncLocalStore {
-  SyncLocalStore({DatabaseHelper? databaseHelper})
-      : _databaseHelper = databaseHelper ?? DatabaseHelper.instance;
+  SyncLocalStore({DatabaseHelper? databaseHelper, SyncSessionStore? sessionStore})
+      : _databaseHelper = databaseHelper ?? DatabaseHelper.instance,
+        _sessionStore = sessionStore ?? SyncSessionStore();
 
   final DatabaseHelper _databaseHelper;
+  final SyncSessionStore _sessionStore;
+
+  Future<bool> _isStaffUser() async {
+    final user = await _sessionStore.readUser();
+    return user?.role == 'staff';
+  }
+
+  Future<String?> _assignedBarberServerId() async {
+    return _sessionStore.assignedBarberServerId;
+  }
 
   Future<String?> applyPull(SyncPullBundle bundle, {String? apiBaseUrl}) async {
     final db = await _databaseHelper.database;
@@ -85,15 +97,28 @@ class SyncLocalStore {
     }
 
     await db.transaction((txn) async {
-      await _applySettings(
-        txn,
-        bundle.settings,
-        logoPath: logoPath,
-        logoServerUrl: logoServerUrl,
-        clearLogo: shouldClearLogo,
-        updateLogoPath: logoPathChanged,
-        updateLogoServerUrl: logoServerUrlChanged,
+      final pendingSettings = await txn.query(
+        'sync_queue',
+        where: "entity_type = 'settings'",
+        limit: 1,
       );
+      final shouldApplyRemoteSettings = pendingSettings.isEmpty &&
+          _isRemoteNewer(
+            bundle.settings.updatedAt,
+            storedMeta.settingsUpdatedAt,
+          );
+
+      if (shouldApplyRemoteSettings) {
+        await _applySettings(
+          txn,
+          bundle.settings,
+          logoPath: logoPath,
+          logoServerUrl: logoServerUrl,
+          clearLogo: shouldClearLogo,
+          updateLogoPath: logoPathChanged,
+          updateLogoServerUrl: logoServerUrlChanged,
+        );
+      }
       for (final barber in bundle.barbers) {
         await _upsertBarber(txn, barber);
       }
@@ -142,9 +167,12 @@ class SyncLocalStore {
     await _setMeta(db, Schema.metaLogoPendingUpload, '');
   }
 
-  Future<void> completeLogoUpload(String logoServerUrl) async {
+  Future<void> completeLogoUpload(
+    String logoServerUrl, {
+    String? updatedAt,
+  }) async {
     final db = await _databaseHelper.database;
-    final now = DateTime.now().toIso8601String();
+    final resolvedUpdatedAt = updatedAt ?? DateTime.now().toIso8601String();
     await db.transaction((txn) async {
       await txn.insert(
         'app_settings',
@@ -158,13 +186,13 @@ class SyncLocalStore {
       );
       await txn.insert(
         'schema_meta',
-        {'key': Schema.metaSettingsUpdatedAt, 'value': now},
+        {'key': Schema.metaSettingsUpdatedAt, 'value': resolvedUpdatedAt},
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
   }
 
-  Future<void> completeLogoDelete() async {
+  Future<void> completeLogoDelete({String? updatedAt}) async {
     ShopLogo.evictCache(await getLocalLogoPath());
     await _clearLocalLogoFile();
     final db = await _databaseHelper.database;
@@ -184,6 +212,13 @@ class SyncLocalStore {
         {'key': Schema.metaLogoPendingDelete, 'value': ''},
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
+      if (updatedAt != null && updatedAt.isNotEmpty) {
+        await txn.insert(
+          'schema_meta',
+          {'key': Schema.metaSettingsUpdatedAt, 'value': updatedAt},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
     });
   }
 
@@ -193,6 +228,8 @@ class SyncLocalStore {
   }
 
   Future<Map<String, dynamic>> buildCatalogChanges() async {
+    if (await _isStaffUser()) return {};
+
     final db = await _databaseHelper.database;
     final barbers = await _buildBarbers(db);
     final services = await _buildServices(db);
@@ -208,6 +245,14 @@ class SyncLocalStore {
   Future<Map<String, dynamic>> buildEntityChanges() async {
     final db = await _databaseHelper.database;
     final appointments = await _buildAppointments(db);
+    if (await _isStaffUser()) {
+      final posInvoices = await _buildPosInvoices(db);
+      return {
+        if (appointments.isNotEmpty) 'appointments': appointments,
+        if (posInvoices.isNotEmpty) 'posInvoices': posInvoices,
+      };
+    }
+
     final blocks = await _buildBlocks(db);
     final posInvoices = await _buildPosInvoices(db);
 
@@ -365,14 +410,18 @@ class SyncLocalStore {
 
   Future<void> markCatalogSyncedAfterPush(
     Map<String, Map<String, String>> applied,
-    Map<String, dynamic> pushedChanges,
-  ) async {
+    Map<String, dynamic> pushedChanges, {
+    List<Map<String, dynamic>> conflicts = const [],
+  }) async {
     final db = await _databaseHelper.database;
     // applied ya procesado en applyIdMappings; aquí solo updates por server id en payload.
     await _markSyncedByServerIdInPayload(db, 'barbers', pushedChanges['barbers']);
     await _markSyncedByServerIdInPayload(db, 'services', pushedChanges['services']);
     if (pushedChanges.containsKey('settings')) {
-      await db.delete('sync_queue', where: "entity_type = 'settings'");
+      final settingsRejected = conflicts.any((c) => c['entity'] == 'settings');
+      if (!settingsRejected) {
+        await db.delete('sync_queue', where: "entity_type = 'settings'");
+      }
     }
   }
 
@@ -392,9 +441,10 @@ class SyncLocalStore {
 
   Future<void> markSyncedAfterPush(
     Map<String, Map<String, String>> applied,
-    Map<String, dynamic> pushedChanges,
-  ) async {
-    await markCatalogSyncedAfterPush(applied, pushedChanges);
+    Map<String, dynamic> pushedChanges, {
+    List<Map<String, dynamic>> conflicts = const [],
+  }) async {
+    await markCatalogSyncedAfterPush(applied, pushedChanges, conflicts: conflicts);
     await markEntitySyncedAfterPush(applied, pushedChanges);
   }
 
@@ -818,6 +868,11 @@ class SyncLocalStore {
       if (barberRows.isEmpty) continue;
       final barberServerId = barberRows.first['server_id'] as String?;
       if (barberServerId == null) continue;
+
+      if (await _isStaffUser()) {
+        final assigned = await _assignedBarberServerId();
+        if (assigned != null && barberServerId != assigned) continue;
+      }
 
       final serviceLines = await db.rawQuery('''
         SELECT s.server_id, aps.unit_price, aps.duration_minutes

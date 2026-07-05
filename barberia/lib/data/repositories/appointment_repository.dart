@@ -132,26 +132,38 @@ class AppointmentRepository {
     return rows.map((row) => row['service_id']! as int).toList();
   }
 
-  Future<List<Appointment>> getCanceledAppointments({String? date}) async {
+  Future<List<Appointment>> getCanceledAppointments({
+    String? date,
+    int? barberId,
+  }) async {
     final db = await _databaseHelper.database;
+    final barberClause = barberId == null ? '' : ' AND a.barber_id = ?';
+    final args = barberId == null
+        ? (date == null
+            ? [AppointmentStatus.canceled.value]
+            : [AppointmentStatus.canceled.value, date])
+        : (date == null
+            ? [AppointmentStatus.canceled.value, barberId]
+            : [AppointmentStatus.canceled.value, date, barberId]);
+
     final rows = date == null
         ? await db.rawQuery(
             '''
             $_appointmentSelect
-            WHERE a.status = ?
+            WHERE a.status = ?$barberClause
             GROUP BY a.id
             ORDER BY a.canceled_at DESC
             ''',
-            [AppointmentStatus.canceled.value],
+            args,
           )
         : await db.rawQuery(
             '''
             $_appointmentSelect
-            WHERE a.status = ? AND a.date = ?
+            WHERE a.status = ? AND a.date = ?$barberClause
             GROUP BY a.id
             ORDER BY a.canceled_at DESC
             ''',
-            [AppointmentStatus.canceled.value, date],
+            args,
           );
 
     return rows.map(Appointment.fromMap).toList();
@@ -437,9 +449,11 @@ class AppointmentRepository {
     await _afterAppointmentChange(id);
   }
 
-  Future<void> markAttended(int id) async {
+  Future<void> markAttended(int id, {bool createInvoice = true}) async {
     await _updateAttendanceStatus(id, AppointmentStatus.attended);
-    await _posInvoiceRepository.createForAppointment(id);
+    if (createInvoice) {
+      await _posInvoiceRepository.createForAppointment(id);
+    }
   }
 
   Future<void> markNoShow(int id) async {

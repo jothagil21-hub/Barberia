@@ -4,11 +4,67 @@ Documento de referencia para la implementación de la app móvil de gestión de 
 
 ---
 
+## Cambios — App vinculada a Vercel (2026)
+
+La app móvil se conecta al panel/API desplegado en Vercel. El usuario final **no ve ni edita la URL** del servidor.
+
+| Tema | Detalle |
+|------|---------|
+| **URL de producción** | `https://barberia-wheat-three.vercel.app` (constante en `barberia/lib/core/api/api_config.dart`) |
+| **URL preview (NO usar)** | URLs con hash (ej. `barberia-7rlqwkam4-...`) — protegidas por login de Vercel |
+| **Login app** | Usuario **TenantUser** creado en Panel → Barbería → Usuarios de app (owner/staff) |
+| **Login panel web** | Super-admin `admin` + `PLATFORM_ADMIN_PASSWORD` — **no usar en la app móvil** |
+| **URL oculta** | Sin campo URL ni botón «Probar conexión» en la pantalla de login |
+| **Modo local** | Eliminado de la UI (`admin`/`123` ya no es accesible desde login) |
+| **Health check** | `/api/health` (Next.js en Vercel) |
+| **Sesión** | Tras login online se guardan token, URL y credenciales en el dispositivo; re-login offline con el mismo usuario del panel |
+| **Desarrollo local** | `flutter run --dart-define=API_BASE_URL=http://TU_IP:3000` (solo para desarrolladores) |
+
+### Preview vs producción en Vercel
+
+| Tipo | Ejemplo | ¿Público? |
+|------|---------|-----------|
+| **Producción** | `barberia-wheat-three.vercel.app` | Sí |
+| **Preview** | URLs con hash en el subdominio | No — suele pedir «Log in to Vercel» |
+
+Si el navegador o la app muestran login de **Vercel** (no el de BarberiaApp), la URL es incorrecta o el deploy está protegido.
+
+### Cómo verificar que el servidor es público
+
+1. Abre una ventana de incógnito (sin sesión Vercel).
+2. Visita `https://barberia-wheat-three.vercel.app/api/health`.
+3. Debe responder `{"status":"ok"}` sin pantalla de Vercel.
+
+### Si solo funciona tras login en Vercel (administrador)
+
+En Vercel → proyecto → **Settings → Deployment Protection**:
+
+1. Asegúrate de que el deploy de la rama `main` esté marcado como **Production**.
+2. Usa el dominio de **Domains** sin hash (`barberia-wheat-three.vercel.app`).
+3. Desactiva protección en **Preview Deployments** si usabas URLs con hash.
+4. Redeploy y vuelve a probar `/api/health` en incógnito.
+
+### Error app: `type 'Null' is not a subtype of...`
+
+Ocurre cuando la app recibe HTML de Vercel en lugar de JSON (preview protegida). Solución: usar dominio de producción + verificación anterior. El cliente HTTP ahora detecta HTML y muestra un mensaje claro.
+
+### Archivos relevantes
+
+- `barberia/lib/core/api/api_config.dart` — URL fija, `effectiveBaseUrl`, `healthCheckPath`
+- `barberia/lib/core/api/api_client.dart` — detecta HTML / JSON inválido
+- `barberia/lib/core/api/api_models.dart` — validación defensiva en login y sync
+- `barberia/lib/screens/login_screen.dart` — solo usuario + contraseña
+- `barberia/lib/providers/providers.dart` — sesión solo vinculada al panel
+- `barberia/lib/core/sync/sync_service.dart` — siempre usa `ApiConfig.effectiveBaseUrl`
+- `barberia/lib/core/sync/sync_session_store.dart` — recuerda solo el último username
+
+---
+
 ## Contexto y objetivo
 
 App móvil para gestionar citas en una barbería con **varios barberos**. Permite ver citas por barbero y día, agregar nuevas citas respetando slots de **30 minutos** entre **9:00 y 21:00**, **reagendar** citas activas (fecha, hora, barbero y servicios), y consultar un historial de citas canceladas. La base de datos es **local (SQLite)** y se inicializa en el **primer ingreso**.
 
-**Acceso:** login local con usuario admin. Los barberos son perfiles de agenda; login individual por barbero queda planificado en Fase 4.
+**Acceso:** login con usuario de la barbería (TenantUser del panel web). La app se sincroniza con el servidor en Vercel. Los barberos son perfiles de agenda en la app; login individual por barbero queda planificado en Fase 4.
 
 **Marca:** nombre de barbería, logo y nombre visible in-app configurables desde **Configuración** (Fase 3.5). El label bajo el icono Android puede permanecer fijo.
 
@@ -28,7 +84,7 @@ App móvil para gestionar citas en una barbería con **varios barberos**. Permit
 | Calendario | `showDatePicker` + `DateSelector` (`table_calendar` en deps, no usado aún) |
 | Notificaciones | `flutter_local_notifications`, `timezone`, `flutter_timezone` |
 | Export PDF | `pdf`, `path_provider`, `share_plus` |
-| Auth local | `bcrypt` + `shared_preferences` (sesión y barbero seleccionado) |
+| Auth | JWT del panel (`tenant_user`) + `shared_preferences` (sesión vinculada y barbero seleccionado) |
 | Imágenes | `image_picker` (logo desde galería) |
 
 **Patrón:** Repository + Riverpod. Sync con backend (`barberia web/`) — offline-first, schema SQLite v6.
@@ -71,7 +127,7 @@ App móvil para gestionar citas en una barbería con **varios barberos**. Permit
 | `created_at` | TEXT NOT NULL | ISO 8601 |
 | `password_change_count` | INTEGER DEFAULT 0 | Tras cada cambio exitoso se incrementa |
 
-**Credencial inicial:** usuario `admin`, contraseña `123` (solo en primera instalación / migración).
+**Credencial SQLite legacy:** usuario `admin`, contraseña `123` (seed en primera instalación; **ya no hay UI de login local** — solo referencia histórica en migraciones).
 
 **Cambio de contraseña:** el primer cambio solo requiere contraseña actual + nueva. Desde el segundo cambio se exige **clave maestra** (constante en código, no en DB).
 
@@ -310,8 +366,11 @@ Componentes reutilizables: `BarberSelector`, `DateSelector`, `TimeSlotGrid`, `Ap
 | **3.6** | Precio servicios, bloqueo agenda, asistió/no asistió, schema v4 | Hecho |
 | **3.7** | Notificaciones con barbero y totales PDF por asistió | Hecho |
 | **3.8** | Editar cliente y reactivar cita cancelada | Hecho |
-| **4** | Login individual por barbero, gestión de usuarios admin | Pospuesta |
-| **5** | Panel web multi-empresa (backend + sync) | MVP web en curso (sin sync) |
+| **4** | Login individual por barbero, gestión de usuarios admin | Pospuesta (ver nota abajo) |
+| **5** | Panel web multi-empresa (Next.js + API en Vercel) | Hecho |
+| **Sync** | App móvil ↔ API offline-first (`TenantUser`, cola sync) | Hecho |
+
+**Nota Fase 4 vs usuarios actuales:** hoy la app usa `TenantUser` del panel (`owner` / `staff`) creados en Panel → Barbería → Usuarios de app. Eso **no** es login 1:1 por perfil de barbero en agenda; Fase 4 sigue pospuesta hasta decidir implementar cuentas por barbero con permisos ampliados desde la app móvil.
 
 ---
 
@@ -337,6 +396,8 @@ Componentes reutilizables: `BarberSelector`, `DateSelector`, `TimeSlotGrid`, `Ap
 
 ## Fase 4 — Roadmap futuro (barberos y usuarios) — pospuesta
 
+**Decisión (2026):** permanece pospuesta. El flujo actual con `TenantUser` (`owner` / `staff`) creados en el panel web cubre el caso de uso principal (owner gestiona todo; staff ve su barbero). Fase 4 solo entra en el roadmap si se requiere que cada barbero de agenda tenga credenciales propias gestionadas desde la app móvil.
+
 - **Login individual por barbero:** cada barbero con credenciales propias.
 - **Gestión de usuarios desde admin:** crear/editar/desactivar cuentas sin clave maestra manual.
 - **Roles ampliados:** permisos diferenciados (admin vs barbero vs recepción).
@@ -344,19 +405,19 @@ Componentes reutilizables: `BarberSelector`, `DateSelector`, `TimeSlotGrid`, `Ap
 
 ---
 
-## Fase 5 — Panel web multi-empresa (siguiente fase)
+## Fase 5 — Panel web multi-empresa (completada)
 
 Concepto **Empresa**: cada barbería/negocio con su branding, barberos, citas y usuarios.
 
-| Área | Alcance tentativo |
-|------|-------------------|
-| Backend | API REST multi-tenant |
-| Auth | SSO o JWT por empresa |
-| Sync | Apps móviles sincronizan citas y catálogos |
-| Admin web | Gestión centralizada desde navegador |
-| Branding | Logo, nombre y configuración por empresa |
+| Área | Estado |
+|------|--------|
+| Backend / API | Next.js API routes + Prisma + PostgreSQL (Vercel) |
+| Auth super-admin | JWT plataforma (`admin` + `PLATFORM_ADMIN_PASSWORD`) |
+| Auth app | JWT `TenantUser` (owner/staff) por barbería |
+| Admin web | Tenants, branding, horario, usuarios de app, citas del día (lectura) |
+| Sync móvil | Implementado (ver sección Sync abajo) |
 
-Sin implementación en la app móvil actual; SQLite local sigue siendo la fuente de verdad hasta esta fase.
+Producción: `https://barberia-wheat-three.vercel.app` — ver sección «Cambios — App vinculada a Vercel» al inicio del documento.
 
 ---
 
@@ -431,25 +492,45 @@ Ejecutar: `flutter test` desde `barberia/`.
 
 ## Pendiente / roadmap
 
-- Fase 4: login por barbero y gestión de usuarios (**pospuesta**)
-- Fase 5: panel web super-admin + API (**MVP en `barberia web/`**, sin sync móvil aún)
-- Sync `barberia/` ↔ API (fase posterior al MVP web)
-- Pulido visual global (tipografía, assets)
-- iOS: verificar permisos de notificaciones y galería en dispositivo real
+### Completado (antes listado como pendiente)
+
+- ~~Fase 5: panel web super-admin + API~~ → MVP en producción ([`barberia-web/`](barberia-web/frontend/))
+- ~~Sync `barberia/` ↔ API~~ → offline-first con `TenantUser`, cola `sync_queue`, despliegue Vercel
+
+### Mejoras recientes (2026)
+
+- Panel web: paleta Barber Gold, login split, modo oscuro, DatePicker en citas, componentes UI unificados
+- App móvil: vinculación Vercel, sync settings/comprobantes staff, calendario compacto en Home, fixes UI nueva cita
+
+### Pendiente real
+
+| Ítem | Prioridad | Notas |
+|------|-----------|-------|
+| **Fase 4** — login individual por barbero + gestión usuarios desde app | Baja (pospuesta) | Hoy: `owner`/`staff` vía panel web; no cuentas 1:1 por barbero de agenda |
+| **Pulido visual** — tipografía, icono de app, paleta móvil = web | Media | Paleta móvil alineada a `#C9A962`; tipografía/icono custom opcional |
+| **iOS QA** — notificaciones y galería en dispositivo real | Alta si publicas en App Store | Claves Info.plist + init iOS en `NotificationService`; checklist abajo |
+| **Dominio propio** — ej. `barberiaapp.com` | Opcional | Comprar dominio + DNS en Vercel; actualizar `api_config.dart` y rebuild APK |
+
+### Checklist iOS (QA manual)
+
+1. Instalar en iPhone/iPad real (`flutter run` o TestFlight).
+2. **Galería:** Configuración → Elegir logo → debe pedir permiso y guardar imagen (`NSPhotoLibraryUsageDescription`).
+3. **Notificaciones:** crear cita futura → al abrir la app debe solicitarse permiso; verificar aviso ~15 min antes.
+4. Si falla alguno, revisar Ajustes → Barberia → Fotos / Notificaciones en el dispositivo.
 
 ---
 
-## Fase 5 — Panel web (MVP, sin sync)
+## Fase 5 — Panel web (completada)
 
-Ubicación: [`barberia web/`](barberia%20web/)
+Ubicación: [`barberia-web/`](barberia-web/)
 
 ```
-barberia web/
-├── backend/     # Fastify + Prisma + PostgreSQL
-└── frontend/    # Next.js panel super-admin
+barberia-web/
+├── backend/     # Fastify + Prisma (desarrollo local; producción usa Next.js API en frontend)
+└── frontend/    # Next.js panel + API routes (desplegado en Vercel)
 ```
 
-La app móvil [`barberia/`](barberia/) **no se modifica** en este MVP (pruebas de usuario).
+La app móvil [`barberia/`](barberia/) se vincula al panel vía sync (`TenantUser`, URL fija Vercel).
 
 ### Variables backend (`.env`, ver `barberia web/backend/.env.example`)
 
@@ -476,11 +557,11 @@ La app móvil [`barberia/`](barberia/) **no se modifica** en este MVP (pruebas d
 
 ---
 
-## Sync móvil ↔ API (offline-first)
+## Sync móvil ↔ API (offline-first) — completado
 
-- App vinculada con URL + usuario `TenantUser` del panel.
+- App vinculada con usuario `TenantUser` del panel; URL fija en código (Vercel).
 - SQLite local sigue siendo fuente de verdad en el dispositivo; sync al tener red.
-- Entidades: settings, barberos, servicios, citas, bloqueos de agenda.
+- Entidades: settings, barberos, servicios, citas, bloqueos de agenda, comprobantes POS.
 - Schema SQLite v6: `server_id`, `sync_status`, cola `sync_queue`.
 
 ### Criterios sync (41–45)
@@ -489,7 +570,7 @@ La app móvil [`barberia/`](barberia/) **no se modifica** en este MVP (pruebas d
 42. Pull inicial trae branding y horario del panel.
 43. Crear cita vinculada → push al servidor; segundo dispositivo la recibe en pull.
 44. Sin red: la app funciona; cambios quedan `pending` y sync al recuperar conexión.
-45. Sin vincular: login local `admin`/`123` sin cambios.
+45. Sin vincular: la app requiere login con TenantUser del panel (modo local `admin`/`123` retirado de la UI).
 
 ---
 
@@ -506,6 +587,6 @@ lib/
 └── widgets/       # home_top_bar, shop_logo, barber_selector, ...
 ```
 
-**Credenciales de prueba:** `admin` / `123`
+**Credenciales de prueba app (producción):** usuario owner/staff creado en Panel → Barbería → Usuarios de app (no usar super-admin `admin` del panel de plataforma).
 
 **Build Android:** desugaring habilitado en `android/app/build.gradle.kts` (requerido por `flutter_local_notifications`).

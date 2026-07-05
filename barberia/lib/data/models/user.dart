@@ -34,6 +34,7 @@ class AuthSession {
     required this.role,
     this.tenantId,
     this.remoteUserId,
+    this.assignedBarberServerId,
     this.isRemote = false,
   });
 
@@ -42,9 +43,11 @@ class AuthSession {
   final String role;
   final String? tenantId;
   final String? remoteUserId;
+  final String? assignedBarberServerId;
   final bool isRemote;
 
   bool get isOwner => role == 'owner';
+  bool get isStaff => role == 'staff';
 
   factory AuthSession.fromUser(AppUser user) {
     return AuthSession(
@@ -59,6 +62,7 @@ class AuthSession {
     required String username,
     required String role,
     required String tenantId,
+    String? assignedBarberServerId,
   }) {
     return AuthSession(
       userId: 0,
@@ -66,6 +70,7 @@ class AuthSession {
       role: role,
       tenantId: tenantId,
       remoteUserId: remoteUserId,
+      assignedBarberServerId: assignedBarberServerId,
       isRemote: true,
     );
   }

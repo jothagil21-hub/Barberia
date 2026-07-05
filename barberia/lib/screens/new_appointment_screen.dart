@@ -31,6 +31,8 @@ class _NewAppointmentScreenState extends ConsumerState<NewAppointmentScreen> {
   final _nameController = TextEditingController();
   final Set<int> _selectedServiceIds = {};
   List<TimeSlotEntry> _slotEntries = [];
+  List<String> _bookedSlots = [];
+  List<String> _blockedTimes = [];
   bool _loadingSlots = true;
   bool _saving = false;
 
@@ -55,6 +57,8 @@ class _NewAppointmentScreenState extends ConsumerState<NewAppointmentScreen> {
     if (barberId == null) {
       setState(() {
         _slotEntries = [];
+        _bookedSlots = [];
+        _blockedTimes = [];
         _loadingSlots = false;
       });
       return;
@@ -74,29 +78,38 @@ class _NewAppointmentScreenState extends ConsumerState<NewAppointmentScreen> {
       date: date,
     );
 
-    final services = ref.read(activeServicesProvider).value ?? [];
-    final durationMinutes = _totalDurationMinutes(services);
-
     if (!mounted) return;
 
     setState(() {
-      _slotEntries = durationMinutes > 0
-          ? TimeSlotGenerator.buildBookingGrid(
-              config: ref.read(scheduleConfigProvider),
-              date: _selectedDate,
-              occupiedSlots: booked,
-              blockedTimes: blocked,
-              durationMinutes: durationMinutes,
-            )
-          : [];
-      if (_selectedSlot != null &&
-          !_slotEntries.any(
-            (entry) => entry.time == _selectedSlot && entry.isSelectable,
-          )) {
-        _selectedSlot = null;
-      }
+      _bookedSlots = booked;
+      _blockedTimes = blocked;
       _loadingSlots = false;
+      _rebuildSlotEntries(clearSelection: true);
     });
+  }
+
+  void _rebuildSlotEntries({bool clearSelection = false}) {
+    final services = ref.read(activeServicesProvider).value ?? [];
+    final durationMinutes = _totalDurationMinutes(services);
+
+    _slotEntries = durationMinutes > 0
+        ? TimeSlotGenerator.buildBookingGrid(
+            config: ref.read(scheduleConfigProvider),
+            date: _selectedDate,
+            occupiedSlots: _bookedSlots,
+            blockedTimes: _blockedTimes,
+            durationMinutes: durationMinutes,
+          )
+        : [];
+
+    if (clearSelection) {
+      _selectedSlot = null;
+    } else if (_selectedSlot != null &&
+        !_slotEntries.any(
+          (entry) => entry.time == _selectedSlot && entry.isSelectable,
+        )) {
+      _selectedSlot = null;
+    }
   }
 
   int _totalDurationMinutes(List<BarberService> services) {
@@ -178,7 +191,13 @@ class _NewAppointmentScreenState extends ConsumerState<NewAppointmentScreen> {
   Widget build(BuildContext context) {
     final servicesAsync = ref.watch(activeServicesProvider);
     ref.listen(selectedBarberIdProvider, (_, __) => _loadAvailableSlots());
-    ref.listen(scheduleConfigProvider, (_, __) => _loadAvailableSlots());
+    ref.listen(scheduleConfigProvider, (_, __) {
+      if (!_loadingSlots) {
+        setState(() => _rebuildSlotEntries());
+      } else {
+        _loadAvailableSlots();
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(title: const Text('Nueva cita')),
@@ -247,15 +266,16 @@ class _NewAppointmentScreenState extends ConsumerState<NewAppointmentScreen> {
             data: (services) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_selectedServiceIds.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      'Duración total: $_selectedDurationMinutes min '
-                      '(ocupa $_blockCount bloques)',
-                      style: const TextStyle(color: AppTheme.textSecondary),
-                    ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _selectedServiceIds.isEmpty
+                        ? 'Selecciona al menos un servicio.'
+                        : 'Duración total: $_selectedDurationMinutes min '
+                            '(ocupa $_blockCount bloques)',
+                    style: const TextStyle(color: AppTheme.textSecondary),
                   ),
+                ),
                 ServiceCheckboxList(
                   services: services,
                   selectedIds: _selectedServiceIds,
@@ -266,8 +286,8 @@ class _NewAppointmentScreenState extends ConsumerState<NewAppointmentScreen> {
                       } else {
                         _selectedServiceIds.remove(id);
                       }
+                      _rebuildSlotEntries();
                     });
-                    _loadAvailableSlots();
                   },
                 ),
               ],

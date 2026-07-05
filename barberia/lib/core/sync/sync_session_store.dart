@@ -9,6 +9,7 @@ class OfflineProfile {
     required this.tenantUserId,
     required this.username,
     required this.role,
+    this.assignedBarberServerId,
   });
 
   final String apiBaseUrl;
@@ -16,6 +17,7 @@ class OfflineProfile {
   final String tenantUserId;
   final String username;
   final String role;
+  final String? assignedBarberServerId;
 }
 
 class SyncSessionStore {
@@ -25,6 +27,7 @@ class SyncSessionStore {
   static const _tenantUserIdKey = 'sync_tenant_user_id';
   static const _usernameKey = 'sync_username';
   static const _roleKey = 'sync_role';
+  static const _assignedBarberIdKey = 'sync_assigned_barber_id';
   static const _linkedKey = 'sync_is_linked';
   static const _lastSyncKey = 'sync_last_sync_at';
   static const _lastLinkApiUrlKey = 'last_link_api_url';
@@ -70,6 +73,7 @@ class SyncSessionStore {
     required String username,
     required String role,
     String? password,
+    String? assignedBarberServerId,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final normalizedUrl = _normalizeUrl(apiBaseUrl);
@@ -79,6 +83,11 @@ class SyncSessionStore {
     await prefs.setString(_tenantUserIdKey, tenantUserId);
     await prefs.setString(_usernameKey, username);
     await prefs.setString(_roleKey, role);
+    if (assignedBarberServerId != null && assignedBarberServerId.isNotEmpty) {
+      await prefs.setString(_assignedBarberIdKey, assignedBarberServerId);
+    } else {
+      await prefs.remove(_assignedBarberIdKey);
+    }
     await prefs.setBool(_linkedKey, true);
     await prefs.setBool(_offlineProfileKey, true);
     if (password != null) {
@@ -91,21 +100,22 @@ class SyncSessionStore {
     await prefs.setString(_lastSyncKey, iso);
   }
 
-  Future<void> saveLastLinkForm({
-    required String apiBaseUrl,
-    required String username,
-  }) async {
+  Future<void> saveLastLinkForm({required String username}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastLinkApiUrlKey, _normalizeUrl(apiBaseUrl));
     await prefs.setString(_lastLinkUsernameKey, username.trim());
+    await prefs.remove(_lastLinkApiUrlKey);
   }
 
-  Future<({String apiBaseUrl, String username})?> readLastLinkForm() async {
+  Future<String?> readLastUsername() async {
     final prefs = await SharedPreferences.getInstance();
-    final apiBaseUrl = prefs.getString(_lastLinkApiUrlKey);
-    final username = prefs.getString(_lastLinkUsernameKey);
-    if (apiBaseUrl == null || username == null) return null;
-    return (apiBaseUrl: apiBaseUrl, username: username);
+    return prefs.getString(_lastLinkUsernameKey);
+  }
+
+  @Deprecated('Use readLastUsername')
+  Future<({String apiBaseUrl, String username})?> readLastLinkForm() async {
+    final username = await readLastUsername();
+    if (username == null) return null;
+    return (apiBaseUrl: ApiConfig.effectiveBaseUrl, username: username);
   }
 
   /// Cierra sesión remota pero conserva perfil offline y credenciales cacheadas.
@@ -124,6 +134,7 @@ class SyncSessionStore {
     await prefs.remove(_tenantUserIdKey);
     await prefs.remove(_usernameKey);
     await prefs.remove(_roleKey);
+    await prefs.remove(_assignedBarberIdKey);
     await prefs.remove(_lastSyncKey);
     await prefs.remove(_offlineProfileKey);
     await prefs.remove(_cachedPasswordKey);
@@ -133,27 +144,35 @@ class SyncSessionStore {
   @Deprecated('Use clearToken() for logout or clearAll() to desvincular')
   Future<void> clear() => clearAll();
 
-  Future<({String username, String role, String tenantUserId})?> readUser() async {
+  Future<String?> get assignedBarberServerId async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_assignedBarberIdKey);
+  }
+
+  Future<({String username, String role, String tenantUserId, String? assignedBarberServerId})?> readUser() async {
     final prefs = await SharedPreferences.getInstance();
     final username = prefs.getString(_usernameKey);
     final role = prefs.getString(_roleKey);
     final userId = prefs.getString(_tenantUserIdKey);
     if (username == null || role == null || userId == null) return null;
-    return (username: username, role: role, tenantUserId: userId);
+    return (
+      username: username,
+      role: role,
+      tenantUserId: userId,
+      assignedBarberServerId: prefs.getString(_assignedBarberIdKey),
+    );
   }
 
   Future<OfflineProfile?> readOfflineProfile() async {
     final prefs = await SharedPreferences.getInstance();
     if (!(prefs.getBool(_offlineProfileKey) ?? false)) return null;
 
-    final apiBaseUrl = prefs.getString(_apiUrlKey);
     final tenantId = prefs.getString(_tenantIdKey);
     final tenantUserId = prefs.getString(_tenantUserIdKey);
     final username = prefs.getString(_usernameKey);
     final role = prefs.getString(_roleKey);
 
-    if (apiBaseUrl == null ||
-        tenantId == null ||
+    if (tenantId == null ||
         tenantUserId == null ||
         username == null ||
         role == null) {
@@ -161,11 +180,12 @@ class SyncSessionStore {
     }
 
     return OfflineProfile(
-      apiBaseUrl: apiBaseUrl,
+      apiBaseUrl: ApiConfig.effectiveBaseUrl,
       tenantId: tenantId,
       tenantUserId: tenantUserId,
       username: username,
       role: role,
+      assignedBarberServerId: prefs.getString(_assignedBarberIdKey),
     );
   }
 

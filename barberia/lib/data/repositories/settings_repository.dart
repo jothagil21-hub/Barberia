@@ -4,7 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../../core/api/api_client.dart';
+import '../../core/api/api_config.dart';
 import '../../core/constants/schedule_constants.dart';
 import '../../core/utils/schedule_config_validator.dart';
 import '../../core/utils/time_slot_generator.dart';
@@ -134,9 +134,12 @@ class SettingsRepository {
     }
 
     try {
-      final logoUrl = await service.uploadLogoReturningUrl(destination);
-      if (logoUrl != null && logoUrl.isNotEmpty) {
-        await _syncLocalStore.completeLogoUpload(logoUrl);
+      final result = await service.uploadLogoReturningUrl(destination);
+      if (result != null && result.logoUrl.isNotEmpty) {
+        await _syncLocalStore.completeLogoUpload(
+          result.logoUrl,
+          updatedAt: result.updatedAt,
+        );
         return null;
       }
       return 'Logo guardado. Se subirá al sincronizar con el panel.';
@@ -168,8 +171,8 @@ class SettingsRepository {
     }
 
     try {
-      await service.deleteLogoRemote();
-      await _syncLocalStore.completeLogoDelete();
+      final updatedAt = await service.deleteLogoRemote();
+      await _syncLocalStore.completeLogoDelete(updatedAt: updatedAt);
       return null;
     } on ApiException catch (e) {
       return 'Logo eliminado en el dispositivo. ${e.message}';

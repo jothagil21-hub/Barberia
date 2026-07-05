@@ -42,16 +42,23 @@ class SyncService {
 
   Future<bool> get isLinked => _session.isLinked;
 
+  String _resolveBaseUrl([String? apiBaseUrl]) {
+    final candidate = normalizeBaseUrl(apiBaseUrl ?? '');
+    if (candidate.isNotEmpty) return candidate;
+    return ApiConfig.effectiveBaseUrl;
+  }
+
   Future<PanelLoginResult> loginWithPanel({
-    required String apiBaseUrl,
+    String? apiBaseUrl,
     required String username,
     required String password,
     void Function(String phase)? onPhase,
   }) async {
+    final resolvedUrl = _resolveBaseUrl(apiBaseUrl);
     if (await _hasNetwork()) {
       try {
         return await linkAndLogin(
-          apiBaseUrl: apiBaseUrl,
+          apiBaseUrl: resolvedUrl,
           username: username,
           password: password,
           onPhase: onPhase,
@@ -64,14 +71,12 @@ class SyncService {
     }
 
     return loginOffline(
-      apiBaseUrl: apiBaseUrl,
       username: username,
       password: password,
     );
   }
 
   Future<PanelLoginResult> loginOffline({
-    required String apiBaseUrl,
     required String username,
     required String password,
   }) async {
@@ -99,8 +104,8 @@ class SyncService {
       );
     }
 
-    await _session.saveLastLinkForm(apiBaseUrl: apiBaseUrl, username: username);
-    _api.configure(baseUrl: profile.apiBaseUrl, token: null);
+    await _session.saveLastLinkForm(username: username);
+    _api.configure(baseUrl: ApiConfig.effectiveBaseUrl, token: null);
     _setState(SyncState.offline);
 
     return PanelLoginResult(
@@ -108,6 +113,7 @@ class SyncService {
       userId: profile.tenantUserId,
       username: profile.username,
       role: profile.role,
+      assignedBarberServerId: profile.assignedBarberServerId,
       isOffline: true,
     );
   }
@@ -166,8 +172,9 @@ class SyncService {
       username: result.username,
       role: result.role,
       password: password,
+      assignedBarberServerId: result.barberId,
     );
-    await _session.saveLastLinkForm(apiBaseUrl: apiBaseUrl, username: username);
+    await _session.saveLastLinkForm(username: username);
     await _local.setActiveTenantId(result.tenantId);
     _api.configure(baseUrl: apiBaseUrl, token: result.token);
 
@@ -188,6 +195,7 @@ class SyncService {
         userId: loginResult.userId,
         username: loginResult.username,
         role: loginResult.role,
+        assignedBarberServerId: loginResult.assignedBarberServerId,
         syncWarning: syncWarning,
       );
     }
@@ -195,10 +203,8 @@ class SyncService {
   }
 
   Future<void> configureFromSession() async {
-    final url = await _session.apiBaseUrl;
-    if (url == null) return;
     final token = await _session.token;
-    _api.configure(baseUrl: url, token: token);
+    _api.configure(baseUrl: ApiConfig.effectiveBaseUrl, token: token);
   }
 
   Future<void> pullFull() async {
@@ -262,7 +268,11 @@ class SyncService {
         await _local.applyIdMappings(lastResult.applied);
         await _local.markConflicts(lastResult.conflicts);
         conflicts.addAll(lastResult.conflicts);
-        await _local.markCatalogSyncedAfterPush(lastResult.applied, catalog);
+        await _local.markCatalogSyncedAfterPush(
+          lastResult.applied,
+          catalog,
+          conflicts: lastResult.conflicts,
+        );
 
         if (!await _local.hasPendingCatalog()) break;
       }
@@ -287,7 +297,7 @@ class SyncService {
 
       String serverTime;
       if (lastResult != null) {
-        final baseUrl = await _session.apiBaseUrl;
+        final baseUrl = ApiConfig.effectiveBaseUrl;
         final warning =
             await _local.applyPull(lastResult.pull, apiBaseUrl: baseUrl);
         if (warning != null && _lastError == null) {
@@ -337,14 +347,14 @@ class SyncService {
 
     try {
       final client = ApiClient();
-      client.configure(baseUrl: profile.apiBaseUrl);
+      client.configure(baseUrl: ApiConfig.effectiveBaseUrl);
       final json = await client.post('/api/app/auth/login', {
         'username': profile.username,
         'password': password,
       });
       final result = AppLoginResult.fromJson(json);
       await _session.saveLink(
-        apiBaseUrl: profile.apiBaseUrl,
+        apiBaseUrl: ApiConfig.effectiveBaseUrl,
         token: result.token,
         tenantId: result.tenantId,
         tenantUserId: result.userId,
@@ -352,7 +362,7 @@ class SyncService {
         role: result.role,
         password: password,
       );
-      _api.configure(baseUrl: profile.apiBaseUrl, token: result.token);
+      _api.configure(baseUrl: ApiConfig.effectiveBaseUrl, token: result.token);
       return true;
     } catch (_) {
       return false;
@@ -377,7 +387,7 @@ class SyncService {
         : '/api/app/sync';
     final json = await _api.get(path);
     final bundle = SyncPullBundle.fromJson(json);
-    final baseUrl = await _session.apiBaseUrl;
+    final baseUrl = ApiConfig.effectiveBaseUrl;
     final warning = await _local.applyPull(bundle, apiBaseUrl: baseUrl);
     if (warning != null && _lastError == null) {
       _lastError = warning;
@@ -433,15 +443,16 @@ class SyncService {
     await uploadLogoReturningUrl(file);
   }
 
-  Future<String?> uploadLogoReturningUrl(File file) async {
+  Future<LogoUploadResult?> uploadLogoReturningUrl(File file) async {
     if (!await _ensureApiReady()) return null;
     final json = await _api.uploadMultipart('/api/app/settings/logo', file);
-    return json['logoUrl'] as String?;
+    return LogoUploadResult.fromJson(json);
   }
 
-  Future<void> deleteLogoRemote() async {
-    if (!await _ensureApiReady()) return;
-    await _api.delete('/api/app/settings/logo');
+  Future<String?> deleteLogoRemote() async {
+    if (!await _ensureApiReady()) return null;
+    final json = await _api.delete('/api/app/settings/logo');
+    return json['updatedAt'] as String?;
   }
 
   Future<void> _flushPendingLogoActions() async {
@@ -449,9 +460,12 @@ class SyncService {
       final path = await _local.getLocalLogoPath();
       if (path != null && File(path).existsSync()) {
         try {
-          final logoUrl = await uploadLogoReturningUrl(File(path));
-          if (logoUrl != null && logoUrl.isNotEmpty) {
-            await _local.completeLogoUpload(logoUrl);
+          final result = await uploadLogoReturningUrl(File(path));
+          if (result != null && result.logoUrl.isNotEmpty) {
+            await _local.completeLogoUpload(
+              result.logoUrl,
+              updatedAt: result.updatedAt,
+            );
           }
         } catch (_) {
           /* reintento en próxima sync */
@@ -462,8 +476,8 @@ class SyncService {
     if (await _local.isLogoPendingDelete()) {
       try {
         if (await _ensureApiReady()) {
-          await _api.delete('/api/app/settings/logo');
-          await _local.completeLogoDelete();
+          final updatedAt = await deleteLogoRemote();
+          await _local.completeLogoDelete(updatedAt: updatedAt);
         }
       } catch (_) {
         /* reintento en próxima sync */

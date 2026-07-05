@@ -76,12 +76,26 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
       _shopNameController.text = settings.shopName;
       _appNameController.text = settings.appDisplayName;
       _controllersInitialized = true;
+    } else {
+      if (!_savingShop &&
+          !_pickingLogo &&
+          _shopNameController.text != settings.shopName) {
+        _shopNameController.text = settings.shopName;
+      }
+      if (!_savingAppName &&
+          _appNameController.text != settings.appDisplayName) {
+        _appNameController.text = settings.appDisplayName;
+      }
     }
     if (!_scheduleInitialized) {
       _scheduleStart = settings.scheduleConfig.startTime;
       _scheduleEnd = settings.scheduleConfig.endTime;
       _scheduleInterval = settings.scheduleConfig.intervalMinutes;
       _scheduleInitialized = true;
+    } else if (!_savingSchedule) {
+      _scheduleStart = settings.scheduleConfig.startTime;
+      _scheduleEnd = settings.scheduleConfig.endTime;
+      _scheduleInterval = settings.scheduleConfig.intervalMinutes;
     }
   }
 
@@ -295,6 +309,8 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
         data: (settings) {
           _syncControllers(settings);
           final requiresMasterKey = (_passwordChangeCount ?? 0) >= 1;
+          final canEditCompanySettings =
+              auth?.isRemote != true || (auth?.isOwner ?? false);
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -326,6 +342,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
               const SizedBox(height: 16),
               TextField(
                 controller: _shopNameController,
+                enabled: canEditCompanySettings,
                 decoration: const InputDecoration(
                   labelText: 'Nombre de la barbería',
                   prefixIcon: Icon(Icons.store_outlined),
@@ -337,7 +354,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _pickingLogo ? null : _pickLogo,
+                      onPressed: !canEditCompanySettings || _pickingLogo
+                          ? null
+                          : _pickLogo,
                       icon: _pickingLogo
                           ? const SizedBox(
                               width: 16,
@@ -352,7 +371,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                     const SizedBox(width: 8),
                     IconButton(
                       tooltip: 'Quitar logo',
-                      onPressed: _removeLogo,
+                      onPressed: canEditCompanySettings ? _removeLogo : null,
                       icon: const Icon(Icons.delete_outline),
                     ),
                   ],
@@ -360,7 +379,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
               ),
               const SizedBox(height: 8),
               FilledButton(
-                onPressed: _savingShop ? null : _saveShopName,
+                onPressed: !canEditCompanySettings || _savingShop
+                    ? null
+                    : _saveShopName,
                 child: Text(_savingShop ? 'Guardando...' : 'Guardar empresa'),
               ),
               const SizedBox(height: 32),
@@ -368,6 +389,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _appNameController,
+                enabled: canEditCompanySettings,
                 decoration: const InputDecoration(
                   labelText: 'Nombre visible en la app',
                   prefixIcon: Icon(Icons.badge_outlined),
@@ -376,7 +398,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
               ),
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: _savingAppName ? null : _saveAppName,
+                onPressed: !canEditCompanySettings || _savingAppName
+                    ? null
+                    : _saveAppName,
                 child: Text(_savingAppName ? 'Guardando...' : 'Guardar nombre'),
               ),
               const SizedBox(height: 32),
@@ -393,7 +417,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                onTap: _savingSchedule ? null : () => _pickScheduleTime(isStart: true),
+                onTap: !canEditCompanySettings || _savingSchedule
+                    ? null
+                    : () => _pickScheduleTime(isStart: true),
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -406,7 +432,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                onTap: _savingSchedule ? null : () => _pickScheduleTime(isStart: false),
+                onTap: !canEditCompanySettings || _savingSchedule
+                    ? null
+                    : () => _pickScheduleTime(isStart: false),
               ),
               const SizedBox(height: 8),
               DropdownMenu<int>(
@@ -420,7 +448,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                       ),
                     )
                     .toList(),
-                onSelected: _savingSchedule
+                onSelected: !canEditCompanySettings || _savingSchedule
                     ? null
                     : (value) {
                         if (value == null) return;
@@ -429,7 +457,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
               ),
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: _savingSchedule ? null : _saveSchedule,
+                onPressed: !canEditCompanySettings || _savingSchedule
+                    ? null
+                    : _saveSchedule,
                 child: Text(
                   _savingSchedule ? 'Guardando...' : 'Guardar horario de agenda',
                 ),

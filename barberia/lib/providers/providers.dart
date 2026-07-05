@@ -142,22 +142,26 @@ class AuthNotifier extends AsyncNotifier<AuthSession?> {
           username: remote.username,
           role: remote.role,
           tenantId: tenantId,
+          assignedBarberServerId: remote.assignedBarberServerId,
         );
       }
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt(_authUserIdKey);
-    final username = prefs.getString(_authUsernameKey);
-    final role = prefs.getString(_authRoleKey);
+    return null;
+  }
 
-    if (userId == null || username == null || role == null) return null;
-
-    return AuthSession(userId: userId, username: username, role: role);
+  Future<void> _applyStaffBarberSelection(String? assignedBarberServerId) async {
+    if (assignedBarberServerId != null && assignedBarberServerId.isNotEmpty) {
+      await ref
+          .read(selectedBarberIdProvider.notifier)
+          .ensureForAssignedServerBarber(assignedBarberServerId);
+      return;
+    }
+    await ref.read(selectedBarberIdProvider.notifier).ensureDefaultBarber();
   }
 
   Future<String?> loginWithPanel({
-    required String apiBaseUrl,
+    String? apiBaseUrl,
     required String username,
     required String password,
     void Function(String phase)? onPhase,
@@ -174,10 +178,11 @@ class AuthNotifier extends AsyncNotifier<AuthSession?> {
         username: result.username,
         role: result.role,
         tenantId: result.tenantId,
+        assignedBarberServerId: result.assignedBarberServerId,
       );
       state = AsyncData(session);
       await ref.read(appSettingsProvider.notifier).refresh();
-      await ref.read(selectedBarberIdProvider.notifier).ensureDefaultBarber();
+      await _applyStaffBarberSelection(result.assignedBarberServerId);
       ref.read(barbersRefreshProvider.notifier).refresh();
       ref.read(servicesRefreshProvider.notifier).refresh();
       ref.read(appointmentsRefreshProvider.notifier).refresh();
@@ -192,6 +197,7 @@ class AuthNotifier extends AsyncNotifier<AuthSession?> {
     }
   }
 
+  @Deprecated('Modo local eliminado; usar loginWithPanel')
   Future<String?> loginLocal(String username, String password) async {
     if (await _syncSession.isLinked) {
       await ref.read(syncServiceProvider).logout();
@@ -229,7 +235,7 @@ class AuthNotifier extends AsyncNotifier<AuthSession?> {
 
   @Deprecated('Use loginWithPanel')
   Future<String?> loginRemote({
-    required String apiBaseUrl,
+    String? apiBaseUrl,
     required String username,
     required String password,
     void Function(String phase)? onPhase,
@@ -261,6 +267,16 @@ class SelectedBarberIdNotifier extends AsyncNotifier<int?> {
   Future<int?> build() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_selectedBarberIdKey);
+  }
+
+  Future<void> ensureForAssignedServerBarber(String serverBarberId) async {
+    final barberRepo = ref.read(barberRepositoryProvider);
+    final localId = await barberRepo.findLocalIdByServerId(serverBarberId);
+    if (localId != null) {
+      await selectBarber(localId);
+      return;
+    }
+    await ensureDefaultBarber();
   }
 
   Future<void> ensureDefaultBarber() async {
@@ -366,8 +382,14 @@ final canceledAppointmentsProvider =
   final filterDate = ref.watch(canceledFilterDateProvider);
   final dateString =
       filterDate == null ? null : DateFormat('yyyy-MM-dd').format(filterDate);
+  final barberId = ref.watch(selectedBarberIdProvider).value;
+  final auth = ref.watch(authProvider).value;
+  final scopedBarberId = auth?.isStaff == true ? barberId : barberId;
   final repo = ref.watch(appointmentRepositoryProvider);
-  return repo.getCanceledAppointments(date: dateString);
+  return repo.getCanceledAppointments(
+    date: dateString,
+    barberId: auth?.isStaff == true ? scopedBarberId : null,
+  );
 });
 
 final activeServicesProvider =

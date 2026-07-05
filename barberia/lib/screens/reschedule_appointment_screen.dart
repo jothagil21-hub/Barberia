@@ -35,6 +35,8 @@ class _RescheduleAppointmentScreenState
   int? _barberId;
   final Set<int> _selectedServiceIds = {};
   List<TimeSlotEntry> _slotEntries = [];
+  List<String> _bookedSlots = [];
+  List<String> _blockedTimes = [];
   bool _loading = true;
   bool _loadingSlots = true;
   bool _saving = false;
@@ -106,11 +108,13 @@ class _RescheduleAppointmentScreenState
     }
   }
 
-  Future<void> _loadAvailableSlots() async {
+  Future<void> _loadAvailableSlots({bool showLoading = true}) async {
     final barberId = ref.read(selectedBarberIdProvider).value ?? _barberId;
     if (barberId == null) return;
 
-    setState(() => _loadingSlots = true);
+    if (showLoading) {
+      setState(() => _loadingSlots = true);
+    }
 
     final date = DateFormat('yyyy-MM-dd').format(_selectedDate);
     final repo = ref.read(appointmentRepositoryProvider);
@@ -126,39 +130,47 @@ class _RescheduleAppointmentScreenState
     );
 
     final services = ref.read(activeServicesProvider).value ?? [];
-    final durationMinutes = _totalDurationMinutes(services);
 
     if (!mounted) return;
 
-    final entries = durationMinutes > 0
+    setState(() {
+      _barberId = barberId;
+      _bookedSlots = booked;
+      _blockedTimes = blocked;
+      _loadingSlots = false;
+      _rebuildSlotEntries(services: services);
+    });
+  }
+
+  void _rebuildSlotEntries({
+    required List<BarberService> services,
+  }) {
+    final durationMinutes = _totalDurationMinutes(services);
+
+    _slotEntries = durationMinutes > 0
         ? TimeSlotGenerator.buildBookingGrid(
             config: ref.read(scheduleConfigProvider),
             date: _selectedDate,
-            occupiedSlots: booked,
-            blockedTimes: blocked,
+            occupiedSlots: _bookedSlots,
+            blockedTimes: _blockedTimes,
             durationMinutes: durationMinutes,
           )
         : <TimeSlotEntry>[];
 
-    setState(() {
-      _barberId = barberId;
-      _slotEntries = entries;
-      final selectedIsSelectable = _selectedSlot != null &&
-          entries.any(
-            (entry) => entry.time == _selectedSlot && entry.isSelectable,
-          );
-      if (!selectedIsSelectable) {
-        String? firstAvailable;
-        for (final entry in entries) {
-          if (entry.isSelectable) {
-            firstAvailable = entry.time;
-            break;
-          }
+    final selectedIsSelectable = _selectedSlot != null &&
+        _slotEntries.any(
+          (entry) => entry.time == _selectedSlot && entry.isSelectable,
+        );
+    if (!selectedIsSelectable) {
+      String? firstAvailable;
+      for (final entry in _slotEntries) {
+        if (entry.isSelectable) {
+          firstAvailable = entry.time;
+          break;
         }
-        _selectedSlot = firstAvailable;
       }
-      _loadingSlots = false;
-    });
+      _selectedSlot = firstAvailable;
+    }
   }
 
   int _totalDurationMinutes(List<BarberService> services) {
@@ -322,15 +334,16 @@ class _RescheduleAppointmentScreenState
             data: (services) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_selectedServiceIds.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      'Duración total: $_selectedDurationMinutes min '
-                      '(ocupa $_blockCount bloques)',
-                      style: const TextStyle(color: AppTheme.textSecondary),
-                    ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _selectedServiceIds.isEmpty
+                        ? 'Selecciona al menos un servicio.'
+                        : 'Duración total: $_selectedDurationMinutes min '
+                            '(ocupa $_blockCount bloques)',
+                    style: const TextStyle(color: AppTheme.textSecondary),
                   ),
+                ),
                 ServiceCheckboxList(
                   services: services,
                   selectedIds: _selectedServiceIds,
@@ -341,8 +354,8 @@ class _RescheduleAppointmentScreenState
                       } else {
                         _selectedServiceIds.remove(id);
                       }
+                      _rebuildSlotEntries(services: services);
                     });
-                    _loadAvailableSlots();
                   },
                 ),
               ],

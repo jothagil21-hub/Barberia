@@ -39,7 +39,15 @@ class NotificationService {
 
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidSettings);
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
 
     await _plugin.initialize(initSettings);
 
@@ -52,12 +60,22 @@ class NotificationService {
 
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
+    final ios = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
 
     await android?.createNotificationChannel(channel);
 
-    final notificationsGranted =
-        await android?.requestNotificationsPermission() ?? true;
-    _notificationsEnabled = notificationsGranted;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      _notificationsEnabled = await ios?.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
+          false;
+    } else {
+      _notificationsEnabled =
+          await android?.requestNotificationsPermission() ?? true;
+    }
 
     await android?.requestExactAlarmsPermission();
     _exactAlarmsEnabled =
@@ -104,13 +122,18 @@ class NotificationService {
         'Cita en 15 minutos',
         body,
         tz.TZDateTime.from(reminderAt, tz.local),
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
+        NotificationDetails(
+          android: const AndroidNotificationDetails(
             _channelId,
             _channelName,
             channelDescription: 'Avisos 15 minutos antes de cada cita',
             importance: Importance.high,
             priority: Priority.high,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
           ),
         ),
         androidScheduleMode: mode,
@@ -132,13 +155,18 @@ class NotificationService {
           'Cita en 15 minutos',
           body,
           tz.TZDateTime.from(reminderAt, tz.local),
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
+          NotificationDetails(
+            android: const AndroidNotificationDetails(
               _channelId,
               _channelName,
               channelDescription: 'Avisos 15 minutos antes de cada cita',
               importance: Importance.high,
               priority: Priority.high,
+            ),
+            iOS: const DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
             ),
           ),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,

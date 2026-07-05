@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../core/theme/app_theme.dart';
+
 class DateSelector extends StatelessWidget {
   const DateSelector({
     super.key,
@@ -16,27 +18,27 @@ class DateSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = DateFormat('EEEE d MMMM yyyy', 'es').format(selectedDate);
+    final formattedLabel = label[0].toUpperCase() + label.substring(1);
 
     return Card(
       child: ListTile(
-        leading: const Icon(Icons.calendar_today),
+        leading: const Icon(Icons.calendar_today, color: AppTheme.accent),
         title: Text(
-          label[0].toUpperCase() + label.substring(1),
+          formattedLabel,
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () async {
+          final today = DateTime.now();
+          final firstDay = allowPastDates
+              ? DateTime(2020)
+              : DateTime(today.year, today.month, today.day);
+
           final picked = await showDatePicker(
             context: context,
             initialDate: selectedDate,
-            firstDate: allowPastDates
-                ? DateTime(2020)
-                : DateTime(
-                    DateTime.now().year,
-                    DateTime.now().month,
-                    DateTime.now().day,
-                  ),
-            lastDate: DateTime.now().add(const Duration(days: 365)),
+            firstDate: firstDay,
+            lastDate: today.add(const Duration(days: 365)),
             locale: const Locale('es'),
           );
 

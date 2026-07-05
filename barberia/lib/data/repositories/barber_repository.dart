@@ -30,6 +30,19 @@ class BarberRepository {
     return rows.map(Barber.fromMap).toList();
   }
 
+  Future<int?> findLocalIdByServerId(String serverId) async {
+    final db = await _databaseHelper.database;
+    final rows = await db.query(
+      'barbers',
+      columns: ['id'],
+      where: 'server_id = ?',
+      whereArgs: [serverId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['id'] as int;
+  }
+
   Future<int> createBarber(String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {

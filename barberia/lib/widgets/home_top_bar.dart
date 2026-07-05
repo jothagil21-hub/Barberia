@@ -161,6 +161,11 @@ class _HomeTopBarState extends ConsumerState<HomeTopBar> {
 
 
 
+    final auth = ref.read(authProvider).value;
+    final visibleItems = auth?.isStaff == true
+        ? _navItems.where((item) => item.route == '/canceled').toList()
+        : _navItems;
+
     _overlayEntry = OverlayEntry(
 
       builder: (context) {
@@ -215,7 +220,7 @@ class _HomeTopBarState extends ConsumerState<HomeTopBar> {
 
                   child: Row(
 
-                    children: _navItems.map((item) {
+                    children: visibleItems.map((item) {
 
                       return Expanded(
 
@@ -538,25 +543,27 @@ class _HomeTopBarState extends ConsumerState<HomeTopBar> {
 
                 ),
 
-              const PopupMenuItem(
+              if (auth != null && auth.isOwner)
 
-                value: 'profile',
+                const PopupMenuItem(
 
-                child: Row(
+                  value: 'profile',
 
-                  children: [
+                  child: Row(
 
-                    Icon(Icons.settings_outlined, size: 18),
+                    children: [
 
-                    SizedBox(width: 8),
+                      Icon(Icons.settings_outlined, size: 18),
 
-                    Text('Configuración'),
+                      SizedBox(width: 8),
 
-                  ],
+                      Text('Configuración'),
+
+                    ],
+
+                  ),
 
                 ),
-
-              ),
 
               const PopupMenuItem(
 

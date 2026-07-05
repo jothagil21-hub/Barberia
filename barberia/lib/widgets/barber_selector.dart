@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/models/barber.dart';
 import '../providers/providers.dart';
 
 class BarberSelector extends ConsumerWidget {
@@ -9,6 +8,7 @@ class BarberSelector extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider).value;
     final selectedBarberAsync = ref.watch(selectedBarberIdProvider);
     final barbersAsync = ref.watch(activeBarbersProvider);
 
@@ -17,7 +17,7 @@ class BarberSelector extends ConsumerWidget {
       error: (error, _) => Text('Error al cargar barberos: $error'),
       data: (barbers) {
         if (barbers.isEmpty) {
-          return const Text('No hay barberos activos. Agrega uno en Gestión de barberos.');
+          return const Text('No hay barberos activos.');
         }
 
         final selectedId = selectedBarberAsync.value;
@@ -30,6 +30,24 @@ class BarberSelector extends ConsumerWidget {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ref.read(selectedBarberIdProvider.notifier).selectBarber(effectiveId);
           });
+        }
+
+        final selectedBarber = barbers.firstWhere(
+          (barber) => barber.id == effectiveId,
+          orElse: () => barbers.first,
+        );
+
+        if (auth?.isStaff == true) {
+          return InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Barbero asignado',
+              prefixIcon: Icon(Icons.person_outline),
+            ),
+            child: Text(
+              selectedBarber.name,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          );
         }
 
         return DropdownButtonFormField<int>(

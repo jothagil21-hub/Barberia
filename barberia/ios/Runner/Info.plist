@@ -66,5 +66,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>BarberiaApp necesita acceder a tus fotos para elegir el logo de la barbería.</string>
 </dict>
 </plist>

@@ -278,9 +278,7 @@ class AppointmentDetailScreen extends ConsumerWidget {
       final repo = ref.read(appointmentRepositoryProvider);
 
       if (attended) {
-
-        await repo.markAttended(appointmentId);
-
+        await repo.markAttended(appointmentId, createInvoice: true);
       } else {
 
         await repo.markNoShow(appointmentId);
@@ -359,7 +357,7 @@ class AppointmentDetailScreen extends ConsumerWidget {
 
               appointment.canMarkAttendanceAt(DateTime.now());
 
-
+          final isOwner = ref.watch(authProvider).value?.isOwner ?? true;
 
           return Padding(
 
@@ -454,7 +452,7 @@ class AppointmentDetailScreen extends ConsumerWidget {
 
                 const Spacer(),
 
-                if (appointment.isAttended) ...[
+                if (appointment.isAttended && isOwner) ...[
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(

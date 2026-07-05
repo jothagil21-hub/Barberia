@@ -1,3 +1,5 @@
+import 'api_config.dart';
+
 class AppLoginResult {
   const AppLoginResult({
     required this.token,
@@ -6,6 +8,7 @@ class AppLoginResult {
     required this.userId,
     required this.username,
     required this.role,
+    this.barberId,
   });
 
   final String token;
@@ -14,17 +17,38 @@ class AppLoginResult {
   final String userId;
   final String username;
   final String role;
+  final String? barberId;
 
   factory AppLoginResult.fromJson(Map<String, dynamic> json) {
-    final tenant = json['tenant'] as Map<String, dynamic>;
-    final user = json['user'] as Map<String, dynamic>;
+    final token = json['token'];
+    final tenant = json['tenant'];
+    final user = json['user'];
+    if (token is! String ||
+        token.isEmpty ||
+        tenant is! Map<String, dynamic> ||
+        user is! Map<String, dynamic>) {
+      throw ApiException('Respuesta inválida del servidor al iniciar sesión.');
+    }
+    final tenantId = tenant['id'];
+    final tenantName = tenant['name'];
+    final userId = user['id'];
+    final username = user['username'];
+    final role = user['role'];
+    if (tenantId is! String ||
+        tenantName is! String ||
+        userId is! String ||
+        username is! String ||
+        role is! String) {
+      throw ApiException('Respuesta incompleta del servidor al iniciar sesión.');
+    }
     return AppLoginResult(
-      token: json['token'] as String,
-      tenantId: tenant['id'] as String,
-      tenantName: tenant['name'] as String,
-      userId: user['id'] as String,
-      username: user['username'] as String,
-      role: user['role'] as String,
+      token: token,
+      tenantId: tenantId,
+      tenantName: tenantName,
+      userId: userId,
+      username: username,
+      role: role,
+      barberId: user['barberId'] as String?,
     );
   }
 }
@@ -35,6 +59,7 @@ class PanelLoginResult {
     required this.userId,
     required this.username,
     required this.role,
+    this.assignedBarberServerId,
     this.isOffline = false,
     this.syncWarning,
   });
@@ -43,6 +68,7 @@ class PanelLoginResult {
   final String userId;
   final String username;
   final String role;
+  final String? assignedBarberServerId;
   final bool isOffline;
   final String? syncWarning;
 
@@ -52,6 +78,7 @@ class PanelLoginResult {
       userId: result.userId,
       username: result.username,
       role: result.role,
+      assignedBarberServerId: result.barberId,
     );
   }
 }
@@ -76,9 +103,14 @@ class SyncPullBundle {
   final List<SyncPosInvoiceDto> posInvoices;
 
   factory SyncPullBundle.fromJson(Map<String, dynamic> json) {
+    final settings = json['settings'];
+    final serverTime = json['serverTime'];
+    if (settings is! Map<String, dynamic> || serverTime is! String) {
+      throw ApiException('Respuesta inválida del servidor al sincronizar.');
+    }
     return SyncPullBundle(
-      serverTime: json['serverTime'] as String,
-      settings: SyncSettingsDto.fromJson(json['settings'] as Map<String, dynamic>),
+      serverTime: serverTime,
+      settings: SyncSettingsDto.fromJson(settings),
       barbers: (json['barbers'] as List<dynamic>)
           .map((e) => SyncBarberDto.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -363,5 +395,20 @@ class SyncPostResult {
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList(),
         pull: SyncPullBundle.fromJson(json['pull'] as Map<String, dynamic>),
+      );
+}
+
+class LogoUploadResult {
+  const LogoUploadResult({
+    required this.logoUrl,
+    this.updatedAt,
+  });
+
+  final String logoUrl;
+  final String? updatedAt;
+
+  factory LogoUploadResult.fromJson(Map<String, dynamic> json) => LogoUploadResult(
+        logoUrl: json['logoUrl'] as String? ?? '',
+        updatedAt: json['updatedAt'] as String?,
       );
 }

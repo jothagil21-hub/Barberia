@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,6 +14,14 @@ import 'screens/schedule_block_screen.dart';
 import 'screens/services_management_screen.dart';
 import 'providers/providers.dart';
 
+const _ownerOnlyRoutes = [
+  '/barbers',
+  '/services',
+  '/export',
+  '/schedule-block',
+  '/profile',
+];
+
 final routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authProvider);
 
@@ -23,11 +30,19 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       if (auth.isLoading) return null;
 
-      final loggedIn = auth.value != null;
+      final session = auth.value;
+      final loggedIn = session != null;
       final isLoginRoute = state.matchedLocation == '/login';
 
       if (!loggedIn && !isLoginRoute) return '/login';
       if (loggedIn && isLoginRoute) return '/';
+
+      if (loggedIn &&
+          session.isStaff &&
+          _ownerOnlyRoutes.any((route) => state.matchedLocation.startsWith(route))) {
+        return '/';
+      }
+
       return null;
     },
     routes: [

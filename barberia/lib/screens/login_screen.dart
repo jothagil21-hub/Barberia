@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/api/api_client.dart';
-import '../core/api/api_config.dart';
 import '../core/constants/app_branding.dart';
 import '../core/sync/sync_session_store.dart';
 import '../core/theme/app_theme.dart';
@@ -22,16 +20,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _scrollController = ScrollController();
   final _statusKey = GlobalKey();
 
-  final _apiUrlController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _localUsernameController = TextEditingController(text: 'admin');
-  final _localPasswordController = TextEditingController();
 
   bool _obscurePassword = true;
-  bool _showLocalBackup = false;
   bool _loading = false;
-  bool _testingHealth = false;
   String? _phase;
   String? _error;
   String? _info;
@@ -39,26 +32,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLastLinkForm();
+    _loadLastUsername();
   }
 
-  Future<void> _loadLastLinkForm() async {
-    final form = await SyncSessionStore().readLastLinkForm();
-    if (!mounted || form == null) return;
-    setState(() {
-      _apiUrlController.text = form.apiBaseUrl;
-      _usernameController.text = form.username;
-    });
+  Future<void> _loadLastUsername() async {
+    final username = await SyncSessionStore().readLastUsername();
+    if (!mounted || username == null) return;
+    setState(() => _usernameController.text = username);
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
-    _apiUrlController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
-    _localUsernameController.dispose();
-    _localPasswordController.dispose();
     super.dispose();
   }
 
@@ -89,16 +76,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _submit() async {
-    final rawUrl = _apiUrlController.text.trim();
-    if (rawUrl.isEmpty) {
-      setState(() {
-        _error = 'Indica la URL del servidor (IP de tu PC en Wi‑Fi).';
-        _info = null;
-      });
-      _scrollToStatus();
-      return;
-    }
-
     setState(() {
       _loading = true;
       _phase = 'connecting';
@@ -108,7 +85,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _scrollToStatus();
 
     final message = await ref.read(authProvider.notifier).loginWithPanel(
-          apiBaseUrl: rawUrl,
           username: _usernameController.text,
           password: _passwordController.text,
           onPhase: (phase) {
@@ -141,78 +117,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _showSnackBar('Sesión iniciada correctamente', isError: false);
     }
     context.go('/');
-  }
-
-  Future<void> _submitLocal() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    final error = await ref.read(authProvider.notifier).loginLocal(
-          _localUsernameController.text,
-          _localPasswordController.text,
-        );
-
-    if (!mounted) return;
-    setState(() => _loading = false);
-
-    if (error != null) {
-      setState(() => _error = error);
-      return;
-    }
-
-    context.go('/');
-  }
-
-  Future<void> _testConnection() async {
-    final rawUrl = _apiUrlController.text.trim();
-    if (rawUrl.isEmpty) {
-      setState(() {
-        _error = 'Indica la URL del servidor.';
-        _info = null;
-      });
-      _scrollToStatus();
-      return;
-    }
-
-    setState(() {
-      _testingHealth = true;
-      _error = null;
-      _info = 'Probando conexión con el servidor…';
-    });
-    _scrollToStatus();
-
-    try {
-      final client = ApiClient();
-      client.configure(baseUrl: rawUrl);
-      await client.get('/health');
-      if (!mounted) return;
-      setState(() {
-        _info = 'Servidor alcanzable. Puedes iniciar sesión.';
-        _error = null;
-      });
-      _showSnackBar('Servidor alcanzable', isError: false);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _info = null;
-      });
-      _showSnackBar(e.message, isError: true);
-      _scrollToStatus();
-    } catch (e) {
-      if (!mounted) return;
-      final msg = 'No se pudo probar la conexión: $e';
-      setState(() {
-        _error = msg;
-        _info = null;
-      });
-      _showSnackBar(msg, isError: true);
-      _scrollToStatus();
-    } finally {
-      if (mounted) setState(() => _testingHealth = false);
-    }
   }
 
   Widget _buildStatusBanner(BuildContext context) {
@@ -251,7 +155,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
         child: Row(
           children: [
-            if (_loading || _testingHealth)
+            if (_loading)
               const SizedBox(
                 width: 18,
                 height: 18,
@@ -269,8 +173,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return const SizedBox.shrink();
   }
 
-  bool get _anyActionInProgress => _loading || _testingHealth;
-
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
@@ -281,7 +183,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final shopName = settings?.shopName ?? AppBranding.shopName;
     final logoPath = settings?.logoPath;
 
-    if (auth.isLoading && !_anyActionInProgress) {
+    if (auth.isLoading && !_loading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -320,7 +222,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Inicia sesión con tu usuario del panel',
+                        'Inicia sesión con tu usuario de la barbería',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: AppTheme.textSecondary,
@@ -330,45 +232,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const AppSectionTitle('Acceso'),
                       const SizedBox(height: 12),
                       TextField(
-                        controller: _apiUrlController,
-                        decoration: const InputDecoration(
-                          labelText: 'URL del servidor',
-                          hintText: 'http://192.168.1.17:3001',
-                          prefixIcon: Icon(Icons.cloud_outlined),
-                          helperText:
-                              'IP de tu PC en Wi‑Fi. Sin conexión usarás credenciales guardadas.',
-                        ),
-                        keyboardType: TextInputType.url,
-                        autocorrect: false,
-                        enabled: !_anyActionInProgress,
-                      ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: _anyActionInProgress ? null : _testConnection,
-                          icon: _testingHealth
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.wifi_tethering, size: 18),
-                          label: Text(_testingHealth ? 'Probando…' : 'Probar conexión'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
                         controller: _usernameController,
                         decoration: const InputDecoration(
-                          labelText: 'Usuario (panel)',
+                          labelText: 'Usuario',
                           prefixIcon: Icon(Icons.person_outline),
                           helperText:
-                              'Créalo en Panel → Barbería → Usuarios de app.',
+                              'Usuario creado en Panel → Barbería → Usuarios de app. '
+                              'No uses el super-admin del panel de plataforma.',
                         ),
                         textInputAction: TextInputAction.next,
                         autocorrect: false,
-                        enabled: !_anyActionInProgress,
+                        enabled: !_loading,
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -389,7 +263,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         obscureText: _obscurePassword,
                         onSubmitted: (_) => _submit(),
-                        enabled: !_anyActionInProgress,
+                        enabled: !_loading,
                       ),
                       if (_error != null || _info != null) ...[
                         const SizedBox(height: 12),
@@ -397,7 +271,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ],
                       const SizedBox(height: 24),
                       FilledButton.icon(
-                        onPressed: _anyActionInProgress ? null : _submit,
+                        onPressed: _loading ? null : _submit,
                         icon: _loading
                             ? const SizedBox(
                                 width: 18,
@@ -413,52 +287,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               : 'Iniciar sesión',
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: _anyActionInProgress
-                            ? null
-                            : () => setState(() => _showLocalBackup = !_showLocalBackup),
-                        child: Text(
-                          _showLocalBackup
-                              ? 'Ocultar modo local'
-                              : 'Modo local de respaldo (admin)',
-                        ),
-                      ),
-                      if (_showLocalBackup) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Solo para uso sin panel. Credenciales por defecto: admin / 123',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppTheme.textSecondary,
-                              ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _localUsernameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Usuario local',
-                            prefixIcon: Icon(Icons.person_outline),
-                          ),
-                          enabled: !_anyActionInProgress,
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _localPasswordController,
-                          decoration: const InputDecoration(
-                            labelText: 'Contraseña local',
-                            prefixIcon: Icon(Icons.lock_outline),
-                          ),
-                          obscureText: true,
-                          onSubmitted: (_) => _submitLocal(),
-                          enabled: !_anyActionInProgress,
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _anyActionInProgress ? null : _submitLocal,
-                          icon: const Icon(Icons.offline_bolt),
-                          label: const Text('Entrar en modo local'),
-                        ),
-                      ],
                     ],
                   ),
                 ),
