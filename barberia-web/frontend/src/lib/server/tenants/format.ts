@@ -47,6 +47,7 @@ export function toPublicUser(user: {
 }
 
 export const STATUS_LABELS: Record<string, string> = {
+  pending: 'Pendiente',
   scheduled: 'Programada',
   canceled: 'Cancelada',
   attended: 'Asistió',

@@ -2,6 +2,7 @@ import type { TenantUserRole } from '@prisma/client';
 import type { SyncConflict } from '@/lib/server/services/sync/types';
 
 export type SyncActor = {
+  userId: string;
   role: TenantUserRole;
   barberId: string | null;
 };
@@ -47,5 +48,5 @@ export async function loadSyncActor(userId: string): Promise<SyncActor | null> {
     select: { role: true, barberId: true, active: true },
   });
   if (!user || !user.active) return null;
-  return { role: user.role, barberId: user.barberId };
+  return { userId, role: user.role, barberId: user.barberId };
 }

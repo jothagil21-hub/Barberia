@@ -31,12 +31,15 @@ export type SyncAppointment = {
   id: string;
   barberId: string;
   clientName: string;
+  clientPhone: string | null;
+  source: string;
   date: string;
   time: string;
   durationMinutes: number;
   status: string;
   createdAt: string;
   canceledAt: string | null;
+  pendingExpiresAt: string | null;
   updatedAt: string;
   services: SyncServiceLine[];
 };
@@ -106,6 +109,7 @@ export type UpsertAppointment = {
   clientId?: string;
   barberId: string;
   clientName: string;
+  clientPhone?: string | null;
   date: string;
   time: string;
   durationMinutes: number;

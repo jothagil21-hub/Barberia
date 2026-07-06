@@ -39,18 +39,18 @@ async function hasSlotConflict(
   durationMinutes: number,
   excludeId?: string,
 ) {
-  const scheduled = await prisma.appointment.findMany({
+  const occupying = await prisma.appointment.findMany({
     where: {
       tenantId,
       barberId,
       date,
-      status: 'scheduled',
+      status: { in: ['scheduled', 'pending'] },
       ...(excludeId ? { NOT: { id: excludeId } } : {}),
     },
     select: { time: true, durationMinutes: true },
   });
 
-  return scheduled.some((existing) =>
+  return occupying.some((existing) =>
     rangesOverlap(time, durationMinutes, existing.time, existing.durationMinutes),
   );
 }
@@ -219,7 +219,7 @@ async function upsertAppointment(
 
   const status = parseAppointmentStatus(item.status);
 
-  if (status === 'scheduled') {
+  if (status === 'scheduled' || status === 'pending') {
     const excludeId = item.id;
     const conflict = await hasSlotConflict(
       tenantId,
@@ -238,6 +238,16 @@ async function upsertAppointment(
       });
       return;
     }
+  }
+
+  if (status === 'pending' && !item.id) {
+    conflicts.push({
+      entity: 'appointment',
+      clientId: item.clientId,
+      serverId: item.id,
+      reason: 'Las solicitudes pendientes solo se crean desde la reserva pública',
+    });
+    return;
   }
 
   if (item.id) {
@@ -264,17 +274,27 @@ async function upsertAppointment(
       return;
     }
 
+    const wasPending = existing.status === 'pending';
+    const isResponse =
+      wasPending && (status === 'scheduled' || status === 'canceled');
+    const respondedAt = isResponse ? parseDate(item.updatedAt) : undefined;
+    const respondedByUserId = isResponse && actor ? actor.userId : undefined;
+
     await prisma.$transaction(async (tx) => {
       await tx.appointment.update({
         where: { id: existing.id },
         data: {
           barberId: item.barberId,
           clientName: item.clientName,
+          clientPhone: item.clientPhone ?? existing.clientPhone,
           date: item.date,
           time: item.time,
           durationMinutes: item.durationMinutes,
           status,
           canceledAt: item.canceledAt ? parseDate(item.canceledAt) : null,
+          pendingExpiresAt: status === 'pending' ? existing.pendingExpiresAt : null,
+          respondedAt: respondedAt ?? existing.respondedAt,
+          respondedByUserId: respondedByUserId ?? existing.respondedByUserId,
           updatedAt: parseDate(item.updatedAt),
         },
       });
@@ -302,6 +322,8 @@ async function upsertAppointment(
       tenantId,
       barberId: item.barberId,
       clientName: item.clientName,
+      clientPhone: item.clientPhone ?? null,
+      source: 'staff',
       date: item.date,
       time: item.time,
       durationMinutes: item.durationMinutes,

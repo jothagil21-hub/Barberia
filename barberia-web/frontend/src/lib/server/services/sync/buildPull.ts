@@ -123,12 +123,15 @@ export async function buildPullBundle(
       id: a.id,
       barberId: a.barberId,
       clientName: a.clientName,
+      clientPhone: a.clientPhone,
+      source: a.source,
       date: a.date,
       time: a.time,
       durationMinutes: a.durationMinutes,
       status: a.status,
       createdAt: toIso(a.createdAt),
       canceledAt: a.canceledAt ? toIso(a.canceledAt) : null,
+      pendingExpiresAt: a.pendingExpiresAt ? toIso(a.pendingExpiresAt) : null,
       updatedAt: toIso(a.updatedAt),
       services: a.services.map((line) => ({
         serviceId: line.serviceId,
@@ -160,7 +163,7 @@ export async function buildPullBundle(
 }
 
 export function parseAppointmentStatus(value: string): AppointmentStatus {
-  const allowed = ['scheduled', 'canceled', 'attended', 'no_show'] as const;
+  const allowed = ['pending', 'scheduled', 'canceled', 'attended', 'no_show'] as const;
   if ((allowed as readonly string[]).includes(value)) {
     return value as AppointmentStatus;
   }

@@ -94,6 +94,8 @@ model TenantSettings {
 
   scheduleInterval Int      @default(30) @map("schedule_interval")
 
+  onlineBookingEnabled Boolean @default(true) @map("online_booking_enabled")
+
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
 
 
@@ -143,6 +145,10 @@ model TenantUser {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   barber Barber? @relation(fields: [barberId], references: [id], onDelete: SetNull)
+
+  deviceTokens DeviceToken[]
+
+  respondedAppointments Appointment[] @relation("AppointmentRespondedBy")
 
 
 
@@ -216,6 +222,8 @@ model Service {
 
 enum AppointmentStatus {
 
+  pending
+
   scheduled
 
   canceled
@@ -223,6 +231,16 @@ enum AppointmentStatus {
   attended
 
   no_show
+
+}
+
+
+
+enum AppointmentSource {
+
+  staff
+
+  client_web
 
 }
 
@@ -238,6 +256,10 @@ model Appointment {
 
   clientName String            @map("client_name")
 
+  clientPhone      String?           @map("client_phone")
+
+  source           AppointmentSource @default(staff)
+
   date       String
 
   time            String
@@ -245,6 +267,12 @@ model Appointment {
   durationMinutes Int               @default(30) @map("duration_minutes")
 
   status          AppointmentStatus @default(scheduled)
+
+  pendingExpiresAt DateTime?         @map("pending_expires_at")
+
+  respondedAt      DateTime?         @map("responded_at")
+
+  respondedByUserId String?          @map("responded_by_user_id")
 
   createdAt       DateTime          @default(now()) @map("created_at")
 
@@ -257,6 +285,8 @@ model Appointment {
   tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   barber   Barber               @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  respondedBy TenantUser? @relation("AppointmentRespondedBy", fields: [respondedByUserId], references: [id], onDelete: SetNull)
 
   services  AppointmentService[]
 
@@ -369,6 +399,44 @@ model PosInvoice {
   @@index([tenantId, updatedAt])
 
   @@map("pos_invoices")
+
+}
+
+
+
+enum DevicePlatform {
+
+  android
+
+  ios
+
+}
+
+
+
+model DeviceToken {
+
+  id           String         @id @default(uuid())
+
+  tenantUserId String         @map("tenant_user_id")
+
+  fcmToken     String         @map("fcm_token")
+
+  platform     DevicePlatform
+
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+
+
+  tenantUser TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+
+
+
+  @@unique([tenantUserId, fcmToken])
+
+  @@index([tenantUserId])
+
+  @@map("device_tokens")
 
 }
 

@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { AppNav } from '@/components/AppNav';
 import { AuthGuard } from '@/components/AuthGuard';
+import { BookingLinkSection } from '@/components/BookingLinkSection';
 import { FileUpload } from '@/components/FileUpload';
 import { InlineSpinner } from '@/components/InlineSpinner';
 import { LoadingBlock } from '@/components/LoadingBlock';
@@ -187,6 +188,20 @@ export default function TenantDetailPage() {
               Guardar
             </LoadingButton>
           </form>
+        </div>
+
+        <div className={`card${savingSettings || uploadingLogo ? ' card-busy' : ''}`}>
+          {(savingSettings || uploadingLogo) && (
+            <div className="card-busy-spinner">
+              <InlineSpinner label={uploadingLogo ? 'Subiendo logo…' : 'Guardando…'} />
+            </div>
+          )}
+          <h2>Reserva online</h2>
+          <p className="muted">
+            Comparte este enlace o el código QR para que los clientes soliciten citas sin instalar la
+            app.
+          </p>
+          <BookingLinkSection slug={tenant.slug} />
         </div>
 
         <div className={`card${savingSettings || uploadingLogo ? ' card-busy' : ''}`}>
