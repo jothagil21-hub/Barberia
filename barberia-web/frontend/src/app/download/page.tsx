@@ -6,24 +6,29 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   ANDROID_APK_FILENAME,
+  ANDROID_APK_PATH,
   APP_DISPLAY_VERSION,
   getAndroidApkUrl,
   isLikelyAndroid,
+  usesExternalApkUrl,
 } from '@/lib/app-download';
 
 type ApkStatus = 'checking' | 'ready' | 'missing';
 
 export default function DownloadPage() {
-  const [status, setStatus] = useState<ApkStatus>('checking');
+  const apkUrl = getAndroidApkUrl();
+  const externalApk = usesExternalApkUrl();
+  const [status, setStatus] = useState<ApkStatus>(externalApk ? 'ready' : 'checking');
   const [autoStarted, setAutoStarted] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const apkUrl = getAndroidApkUrl();
+    if (externalApk) return;
 
-    async function checkApk() {
+    let cancelled = false;
+
+    async function checkLocalApk() {
       try {
-        const res = await fetch(apkUrl, { method: 'HEAD' });
+        const res = await fetch(ANDROID_APK_PATH, { method: 'HEAD' });
         if (cancelled) return;
         setStatus(res.ok ? 'ready' : 'missing');
       } catch {
@@ -31,27 +36,22 @@ export default function DownloadPage() {
       }
     }
 
-    void checkApk();
+    void checkLocalApk();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [externalApk]);
 
   useEffect(() => {
     if (status !== 'ready' || autoStarted || !isLikelyAndroid()) return;
 
-    const apkUrl = getAndroidApkUrl();
     const timer = window.setTimeout(() => {
       setAutoStarted(true);
       window.location.assign(apkUrl);
     }, 800);
 
     return () => window.clearTimeout(timer);
-  }, [status, autoStarted]);
-
-  function handleDownload() {
-    window.location.assign(getAndroidApkUrl());
-  }
+  }, [status, autoStarted, apkUrl]);
 
   return (
     <div className="download-page">
@@ -74,23 +74,33 @@ export default function DownloadPage() {
         {status === 'missing' && (
           <div className="download-alert">
             <p>
-              El instalador no está disponible. Sube el APK a un{' '}
-              <strong>GitHub Release</strong> y configura{' '}
-              <code>NEXT_PUBLIC_APK_URL</code> en Vercel, o coloca{' '}
-              <code>{ANDROID_APK_FILENAME}</code> en <code>public/downloads/</code>{' '}
-              solo para pruebas locales (no subir al repo: límite 100 MB).
+              El instalador no está en este servidor. Para producción configura{' '}
+              <code>NEXT_PUBLIC_APK_URL</code> en Vercel (URL de un GitHub Release), o
+              coloca <code>{ANDROID_APK_FILENAME}</code> en{' '}
+              <code>public/downloads/</code> para pruebas locales.
             </p>
           </div>
         )}
 
         {status === 'ready' && (
           <>
-            <button type="button" className="btn btn-block btn-lg" onClick={handleDownload}>
+            <a
+              href={apkUrl}
+              className="btn btn-block btn-lg download-apk-btn"
+              download={externalApk ? undefined : ANDROID_APK_FILENAME}
+            >
               Descargar para Android
-            </button>
+            </a>
             {autoStarted && (
               <p className="download-hint muted">
                 Si la descarga no comenzó, pulsa el botón de arriba.
+              </p>
+            )}
+            {externalApk && (
+              <p className="download-hint muted">
+                <a href={apkUrl} target="_blank" rel="noopener noreferrer">
+                  Enlace directo al instalador
+                </a>
               </p>
             )}
           </>
