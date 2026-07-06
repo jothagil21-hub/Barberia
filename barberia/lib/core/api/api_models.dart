@@ -221,17 +221,23 @@ class SyncAppointmentDto {
     required this.canceledAt,
     required this.updatedAt,
     required this.services,
+    this.clientPhone,
+    this.source,
+    this.pendingExpiresAt,
   });
 
   final String id;
   final String barberId;
   final String clientName;
+  final String? clientPhone;
+  final String? source;
   final String date;
   final String time;
   final int durationMinutes;
   final String status;
   final String createdAt;
   final String? canceledAt;
+  final String? pendingExpiresAt;
   final String updatedAt;
   final List<SyncServiceLineDto> services;
 
@@ -240,12 +246,15 @@ class SyncAppointmentDto {
         id: json['id'] as String,
         barberId: json['barberId'] as String,
         clientName: json['clientName'] as String,
+        clientPhone: json['clientPhone'] as String?,
+        source: json['source'] as String?,
         date: json['date'] as String,
         time: json['time'] as String,
         durationMinutes: json['durationMinutes'] as int? ?? 30,
         status: json['status'] as String,
         createdAt: json['createdAt'] as String,
         canceledAt: json['canceledAt'] as String?,
+        pendingExpiresAt: json['pendingExpiresAt'] as String?,
         updatedAt: json['updatedAt'] as String,
         services: (json['services'] as List<dynamic>)
             .map((e) => SyncServiceLineDto.fromJson(e as Map<String, dynamic>))

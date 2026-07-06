@@ -11,6 +11,8 @@ class Appointment {
     required this.status,
     required this.createdAt,
     this.canceledAt,
+    this.clientPhone,
+    this.pendingExpiresAt,
     this.barberName,
     this.services = const [],
     this.totalPrice = 0,
@@ -25,10 +27,13 @@ class Appointment {
   final AppointmentStatus status;
   final String createdAt;
   final String? canceledAt;
+  final String? clientPhone;
+  final String? pendingExpiresAt;
   final String? barberName;
   final List<String> services;
   final double totalPrice;
 
+  bool get isPending => status == AppointmentStatus.pending;
   bool get isCanceled => status == AppointmentStatus.canceled;
   bool get isScheduled => status == AppointmentStatus.scheduled;
   bool get isAttended => status == AppointmentStatus.attended;
@@ -77,6 +82,8 @@ class Appointment {
       status: AppointmentStatus.fromValue(map['status'] as String),
       createdAt: map['created_at'] as String,
       canceledAt: map['canceled_at'] as String?,
+      clientPhone: map['client_phone'] as String?,
+      pendingExpiresAt: map['pending_expires_at'] as String?,
       barberName: map['barber_name'] as String?,
       services: _parseServices(map['services']),
       totalPrice: (map['total_price'] as num?)?.toDouble() ?? 0,

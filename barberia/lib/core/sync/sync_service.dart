@@ -7,6 +7,7 @@ import '../../data/repositories/auth_repository.dart';
 import '../api/api_client.dart';
 import '../api/api_config.dart';
 import '../api/api_models.dart';
+import '../push/push_notification_service.dart';
 import 'sync_local_store.dart';
 import 'sync_session_store.dart';
 import 'sync_tracker.dart';
@@ -178,6 +179,8 @@ class SyncService {
     await _local.setActiveTenantId(result.tenantId);
     _api.configure(baseUrl: apiBaseUrl, token: result.token);
 
+    await registerPushToken();
+
     onPhase?.call('syncing');
     String? syncWarning;
     try {
@@ -205,6 +208,14 @@ class SyncService {
   Future<void> configureFromSession() async {
     final token = await _session.token;
     _api.configure(baseUrl: ApiConfig.effectiveBaseUrl, token: token);
+    if (token != null) {
+      await registerPushToken();
+    }
+  }
+
+  Future<void> registerPushToken() async {
+    if (!await _session.isLinked) return;
+    await PushNotificationService.instance.registerWithApi(_api);
   }
 
   Future<void> pullFull() async {
@@ -363,6 +374,7 @@ class SyncService {
         password: password,
       );
       _api.configure(baseUrl: ApiConfig.effectiveBaseUrl, token: result.token);
+      await registerPushToken();
       return true;
     } catch (_) {
       return false;

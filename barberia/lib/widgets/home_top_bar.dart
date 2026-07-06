@@ -493,6 +493,24 @@ class _HomeTopBarState extends ConsumerState<HomeTopBar> {
           ),
 
           if (auth?.isRemote == true)
+            Consumer(
+              builder: (context, ref, _) {
+                final pendingCount = ref.watch(pendingCountProvider).maybeWhen(
+                      data: (count) => count,
+                      orElse: () => 0,
+                    );
+                return Badge(
+                  isLabelVisible: pendingCount > 0,
+                  label: Text('$pendingCount'),
+                  child: IconButton(
+                    tooltip: 'Solicitudes pendientes',
+                    icon: const Icon(Icons.mark_email_unread_outlined),
+                    onPressed: () => context.push('/pending'),
+                  ),
+                );
+              },
+            ),
+          if (auth?.isRemote == true)
             IconButton(
               tooltip: 'Sincronizar ahora',
               icon: syncState == SyncState.syncing

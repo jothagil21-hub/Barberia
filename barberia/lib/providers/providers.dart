@@ -351,6 +351,31 @@ final appointmentsForDateProvider =
   return repo.getAppointmentsByDate(date, barberId: barberId);
 });
 
+final pendingAppointmentsProvider =
+    FutureProvider.autoDispose<List<Appointment>>((ref) async {
+  ref.watch(appointmentsRefreshProvider);
+  final auth = ref.watch(authProvider).value;
+  final barberId = ref.watch(selectedBarberIdProvider).value;
+  final repo = ref.watch(appointmentRepositoryProvider);
+  if (auth?.isStaff == true) {
+    if (barberId == null) return [];
+    return repo.getPendingAppointments(barberId: barberId);
+  }
+  return repo.getPendingAppointments();
+});
+
+final pendingCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  ref.watch(appointmentsRefreshProvider);
+  final auth = ref.watch(authProvider).value;
+  final barberId = ref.watch(selectedBarberIdProvider).value;
+  final repo = ref.watch(appointmentRepositoryProvider);
+  if (auth?.isStaff == true) {
+    if (barberId == null) return 0;
+    return repo.countPendingAppointments(barberId: barberId);
+  }
+  return repo.countPendingAppointments();
+});
+
 final appointmentDetailProvider =
     FutureProvider.autoDispose.family<Appointment?, int>((ref, id) async {
   ref.watch(appointmentsRefreshProvider);

@@ -9,6 +9,7 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/new_appointment_screen.dart';
 import 'screens/reschedule_appointment_screen.dart';
+import 'screens/pending_requests_screen.dart';
 import 'screens/profile_settings_screen.dart';
 import 'screens/schedule_block_screen.dart';
 import 'screens/services_management_screen.dart';
@@ -57,6 +58,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/new',
         builder: (context, state) => const NewAppointmentScreen(),
+      ),
+      GoRoute(
+        path: '/pending',
+        builder: (context, state) => const PendingRequestsScreen(),
       ),
       GoRoute(
         path: '/canceled',

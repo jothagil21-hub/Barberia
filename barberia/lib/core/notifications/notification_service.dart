@@ -29,6 +29,9 @@ class NotificationService {
 
   static const String _channelId = 'appointment_reminders';
   static const String _channelName = 'Recordatorios de citas';
+  static const String _pushChannelId = 'pending_requests';
+  static const String _pushChannelName = 'Solicitudes de clientes';
+  static const int _pushNotificationId = 900001;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -64,6 +67,14 @@ class NotificationService {
         IOSFlutterLocalNotificationsPlugin>();
 
     await android?.createNotificationChannel(channel);
+    await android?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _pushChannelId,
+        _pushChannelName,
+        description: 'Avisos de nuevas solicitudes de clientes',
+        importance: Importance.high,
+      ),
+    );
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       _notificationsEnabled = await ios?.requestPermissions(
@@ -197,5 +208,32 @@ class NotificationService {
         );
       }
     }
+  }
+
+  Future<void> showPushAlert({
+    required String title,
+    required String body,
+  }) async {
+    if (!_initialized || !_notificationsEnabled) return;
+
+    await _plugin.show(
+      _pushNotificationId,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _pushChannelId,
+          _pushChannelName,
+          channelDescription: 'Avisos de nuevas solicitudes de clientes',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+    );
   }
 }

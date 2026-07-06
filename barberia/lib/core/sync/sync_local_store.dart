@@ -682,11 +682,14 @@ class SyncLocalStore {
     var localId = await _findLocalId(txn, 'appointments', remote.id);
     final data = {
       'client_name': remote.clientName,
+      'client_phone': remote.clientPhone,
       'barber_id': localBarberId,
       'date': remote.date,
       'time': remote.time,
       'duration_minutes': remote.durationMinutes,
       'status': remote.status,
+      'source': remote.source ?? 'staff',
+      'pending_expires_at': remote.pendingExpiresAt,
       'created_at': remote.createdAt,
       'canceled_at': remote.canceledAt,
       'server_id': remote.id,
@@ -705,7 +708,7 @@ class SyncLocalStore {
       await txn.update('appointments', data, where: 'id = ?', whereArgs: [localId]);
       appointmentId = localId;
     } else {
-      if (remote.status == 'scheduled') {
+      if (remote.status == 'scheduled' || remote.status == 'pending') {
         localId = await _findLocalAppointmentByActiveSlot(
           txn,
           localBarberId,
@@ -896,6 +899,7 @@ class SyncLocalStore {
         if (serverId == null) 'clientId': SyncTracker.clientId('appointment', localId),
         'barberId': barberServerId,
         'clientName': row['client_name'],
+        if (row['client_phone'] != null) 'clientPhone': row['client_phone'],
         'date': row['date'],
         'time': row['time'],
         'durationMinutes': row['duration_minutes'] ?? 30,
@@ -1026,8 +1030,8 @@ class SyncLocalStore {
   ) async {
     final rows = await db.query(
       'appointments',
-      where: 'barber_id = ? AND date = ? AND time = ? AND status = ?',
-      whereArgs: [barberLocalId, date, time, 'scheduled'],
+      where: 'barber_id = ? AND date = ? AND time = ? AND status IN (?, ?)',
+      whereArgs: [barberLocalId, date, time, 'scheduled', 'pending'],
       limit: 1,
     );
     if (rows.isEmpty) return null;

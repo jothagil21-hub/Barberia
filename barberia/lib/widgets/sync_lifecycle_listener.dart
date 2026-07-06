@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/providers.dart';
+import '../router.dart';
+import '../core/push/push_notification_service.dart';
 
 /// Escucha red y ciclo de vida para disparar sync automático.
 class SyncLifecycleListener extends ConsumerStatefulWidget {
@@ -30,6 +32,12 @@ class _SyncLifecycleListenerState extends ConsumerState<SyncLifecycleListener>
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final router = ref.read(routerProvider);
+      PushNotificationService.instance.onNavigate = router.go;
+      PushNotificationService.instance.onPendingRequest = () {
+        ref.read(appointmentsRefreshProvider.notifier).refresh();
+      };
+      PushNotificationService.instance.bindListeners();
       await ref.read(syncServiceProvider).configureFromSession();
       await ref.read(syncServiceProvider).syncNow();
     });

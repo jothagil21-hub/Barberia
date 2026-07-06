@@ -32,12 +32,14 @@ class AppointmentRepository {
   static const String _appointmentSelect = '''
     SELECT a.id,
            a.client_name,
+           a.client_phone,
            a.barber_id,
            b.name AS barber_name,
            a.date,
            a.time,
            a.duration_minutes,
            a.status,
+           a.pending_expires_at,
            a.created_at,
            a.canceled_at,
            GROUP_CONCAT(s.name, ', ') AS services,
@@ -47,6 +49,9 @@ class AppointmentRepository {
     LEFT JOIN appointment_services aps ON a.id = aps.appointment_id
     LEFT JOIN services s ON aps.service_id = s.id
   ''';
+
+  static const String _occupyingStatuses =
+      "('scheduled', 'pending')";
 
   Future<List<Appointment>> getAppointmentsByDate(
     String date, {
@@ -66,6 +71,89 @@ class AppointmentRepository {
     return rows.map(Appointment.fromMap).toList();
   }
 
+  Future<List<Appointment>> getPendingAppointments({int? barberId}) async {
+    final db = await _databaseHelper.database;
+    final where = barberId == null
+        ? 'a.status = ?'
+        : 'a.status = ? AND a.barber_id = ?';
+    final args = barberId == null
+        ? [AppointmentStatus.pending.value]
+        : [AppointmentStatus.pending.value, barberId];
+
+    final rows = await db.rawQuery(
+      '''
+      $_appointmentSelect
+      WHERE $where
+      GROUP BY a.id
+      ORDER BY a.date ASC, a.time ASC
+      ''',
+      args,
+    );
+    return rows.map(Appointment.fromMap).toList();
+  }
+
+  Future<int> countPendingAppointments({int? barberId}) async {
+    final pending = await getPendingAppointments(barberId: barberId);
+    return pending.length;
+  }
+
+  Future<void> acceptPendingRequest(int id) async {
+    final appointment = await getAppointmentById(id);
+    if (appointment == null || !appointment.isPending) {
+      throw StateError('La solicitud ya no está pendiente.');
+    }
+
+    await _ensureNoOverlap(
+      barberId: appointment.barberId,
+      date: appointment.date,
+      time: appointment.time,
+      durationMinutes: appointment.durationMinutes,
+      excludeAppointmentId: id,
+    );
+
+    final db = await _databaseHelper.database;
+    final now = DateTime.now().toIso8601String();
+    final updated = await db.update(
+      'appointments',
+      {
+        'status': AppointmentStatus.scheduled.value,
+        'pending_expires_at': null,
+        'updated_at': now,
+      },
+      where: 'id = ? AND status = ?',
+      whereArgs: [id, AppointmentStatus.pending.value],
+    );
+    if (updated == 0) {
+      throw StateError('No se pudo aceptar la solicitud.');
+    }
+    await _afterAppointmentChange(id);
+  }
+
+  Future<void> rejectPendingRequest(int id) async {
+    final appointment = await getAppointmentById(id);
+    if (appointment == null || !appointment.isPending) {
+      throw StateError('La solicitud ya no está pendiente.');
+    }
+
+    final db = await _databaseHelper.database;
+    final now = DateTime.now().toIso8601String();
+    final updated = await db.update(
+      'appointments',
+      {
+        'status': AppointmentStatus.canceled.value,
+        'canceled_at': now,
+        'pending_expires_at': null,
+        'updated_at': now,
+      },
+      where: 'id = ? AND status = ?',
+      whereArgs: [id, AppointmentStatus.pending.value],
+    );
+    if (updated == 0) {
+      throw StateError('No se pudo rechazar la solicitud.');
+    }
+    await _afterAppointmentChange(id);
+  }
+
   Future<List<String>> getOccupiedSlots(
     String date, {
     required int barberId,
@@ -76,20 +164,19 @@ class AppointmentRepository {
         ? await db.query(
             'appointments',
             columns: ['time', 'duration_minutes'],
-            where: 'date = ? AND status = ? AND barber_id = ?',
+            where: 'date = ? AND status IN $_occupyingStatuses AND barber_id = ?',
             whereArgs: [
               date,
-              AppointmentStatus.scheduled.value,
               barberId,
             ],
           )
         : await db.query(
             'appointments',
             columns: ['time', 'duration_minutes'],
-            where: 'date = ? AND status = ? AND barber_id = ? AND id != ?',
+            where:
+                'date = ? AND status IN $_occupyingStatuses AND barber_id = ? AND id != ?',
             whereArgs: [
               date,
-              AppointmentStatus.scheduled.value,
               barberId,
               excludeAppointmentId,
             ],
@@ -524,19 +611,15 @@ class AppointmentRepository {
         ? await db.query(
             'appointments',
             columns: ['time', 'duration_minutes'],
-            where: 'date = ? AND status = ? AND barber_id = ?',
-            whereArgs: [date, AppointmentStatus.scheduled.value, barberId],
+            where: 'date = ? AND status IN $_occupyingStatuses AND barber_id = ?',
+            whereArgs: [date, barberId],
           )
         : await db.query(
             'appointments',
             columns: ['time', 'duration_minutes'],
-            where: 'date = ? AND status = ? AND barber_id = ? AND id != ?',
-            whereArgs: [
-              date,
-              AppointmentStatus.scheduled.value,
-              barberId,
-              excludeAppointmentId,
-            ],
+            where:
+                'date = ? AND status IN $_occupyingStatuses AND barber_id = ? AND id != ?',
+            whereArgs: [date, barberId, excludeAppointmentId],
           );
 
     for (final row in rows) {

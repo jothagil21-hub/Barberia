@@ -96,7 +96,7 @@ class DatabaseHelper {
 
     await db.execute(Schema.createSyncQueue);
 
-
+    await db.execute(Schema.createActiveSlotIndex);
 
     await DatabaseSeeder.seedCoreData(db);
 
@@ -313,6 +313,22 @@ class DatabaseHelper {
         {'key': Schema.settingLogoServerUrl, 'value': ''},
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
+      await db.update(
+        'schema_meta',
+        {'value': Schema.version.toString()},
+        where: 'key = ?',
+        whereArgs: ['version'],
+      );
+    }
+
+    if (oldVersion < 10) {
+      await db.execute('ALTER TABLE appointments ADD COLUMN client_phone TEXT');
+      await db.execute(
+        'ALTER TABLE appointments ADD COLUMN source TEXT NOT NULL DEFAULT "staff"',
+      );
+      await db.execute('ALTER TABLE appointments ADD COLUMN pending_expires_at TEXT');
+      await db.execute(Schema.dropActiveSlotIndex);
+      await db.execute(Schema.createActiveSlotIndex);
       await db.update(
         'schema_meta',
         {'value': Schema.version.toString()},

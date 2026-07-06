@@ -1,5 +1,5 @@
 class Schema {
-  static const int version = 9;
+  static const int version = 10;
 
   static const String createServices = '''
     CREATE TABLE services (
@@ -57,6 +57,9 @@ class Schema {
       time TEXT NOT NULL,
       duration_minutes INTEGER NOT NULL DEFAULT 30,
       status TEXT NOT NULL DEFAULT 'scheduled',
+      client_phone TEXT,
+      source TEXT NOT NULL DEFAULT 'staff',
+      pending_expires_at TEXT,
       created_at TEXT NOT NULL,
       canceled_at TEXT,
       server_id TEXT,
@@ -132,7 +135,7 @@ class Schema {
   static const String createActiveSlotIndex = '''
     CREATE UNIQUE INDEX idx_active_appointment_slot
     ON appointments(barber_id, date, time)
-    WHERE status = 'scheduled'
+    WHERE status IN ('scheduled', 'pending')
   ''';
 
   static const String createSyncQueue = '''

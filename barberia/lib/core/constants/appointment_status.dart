@@ -1,4 +1,5 @@
 enum AppointmentStatus {
+  pending,
   scheduled,
   canceled,
   attended,
@@ -29,6 +30,8 @@ enum AppointmentStatus {
 extension AppointmentStatusLabel on AppointmentStatus {
   String get displayLabel {
     switch (this) {
+      case AppointmentStatus.pending:
+        return 'Pendiente';
       case AppointmentStatus.scheduled:
         return 'Programada';
       case AppointmentStatus.canceled:

@@ -369,8 +369,11 @@ Componentes reutilizables: `BarberSelector`, `DateSelector`, `TimeSlotGrid`, `Ap
 | **4** | Login individual por barbero, gestión de usuarios admin | Pospuesta (ver nota abajo) |
 | **5** | Panel web multi-empresa (Next.js + API en Vercel) | Hecho |
 | **Sync** | App móvil ↔ API offline-first (`TenantUser`, cola sync) | Hecho |
+| **6** | Reserva pública por clientes (web + push + aceptación) | En implementación (6.1–6.5 base) |
 
 **Nota Fase 4 vs usuarios actuales:** hoy la app usa `TenantUser` del panel (`owner` / `staff`) creados en Panel → Barbería → Usuarios de app. Eso **no** es login 1:1 por perfil de barbero en agenda; Fase 4 sigue pospuesta hasta decidir implementar cuentas por barbero con permisos ampliados desde la app móvil.
+
+**Fase 6 en curso:** ver sección [Fase 6 — Reserva pública por clientes](#fase-6--reserva-pública-por-clientes).
 
 ---
 
@@ -506,10 +509,12 @@ Ejecutar: `flutter test` desde `barberia/`.
 
 | Ítem | Prioridad | Notas |
 |------|-----------|-------|
+| **Fase 6** — reserva pública clientes + push + aceptación | **Alta (activa)** | Ver sección Fase 6; decisiones de producto cerradas (2026) |
 | **Fase 4** — login individual por barbero + gestión usuarios desde app | Baja (pospuesta) | Hoy: `owner`/`staff` vía panel web; no cuentas 1:1 por barbero de agenda |
 | **Pulido visual** — tipografía, icono de app, paleta móvil = web | Media | Paleta móvil alineada a `#C9A962`; tipografía/icono custom opcional |
 | **iOS QA** — notificaciones y galería en dispositivo real | Alta si publicas en App Store | Claves Info.plist + init iOS en `NotificationService`; checklist abajo |
 | **Dominio propio** — ej. `barberiaapp.com` | Opcional | Comprar dominio + DNS en Vercel; actualizar `api_config.dart` y rebuild APK |
+| **Descarga APK** — GitHub Release + `NEXT_PUBLIC_APK_URL` | Media | Página `/download`; APK no va en Git (>100 MB) |
 
 ### Checklist iOS (QA manual)
 
@@ -571,6 +576,168 @@ La app móvil [`barberia/`](barberia/) se vincula al panel vía sync (`TenantUse
 43. Crear cita vinculada → push al servidor; segundo dispositivo la recibe en pull.
 44. Sin red: la app funciona; cambios quedan `pending` y sync al recuperar conexión.
 45. Sin vincular: la app requiere login con TenantUser del panel (modo local `admin`/`123` retirado de la UI).
+
+---
+
+## Fase 6 — Reserva pública por clientes
+
+**Estado:** en planificación (decisiones de producto cerradas, implementación pendiente).
+
+**Objetivo:** que el cliente final agende una cita desde la web **sin login**, usando un **enlace o QR único por barbería**; la solicitud queda **pendiente de confirmación**; el **owner** o el **barbero asignado** reciben **notificación push**, aceptan o rechazan en la app móvil.
+
+### Decisiones de producto (cerradas)
+
+| Tema | Decisión |
+|------|----------|
+| Teléfono del cliente | **Obligatorio** (contacto para la barbería) |
+| Quién acepta / rechaza | **Owner** (toda la barbería) y **staff** (solo su barbero asignado) |
+| Plazo para responder | **24 horas**; si no hay respuesta → solicitud **cancelada** y slot liberado |
+| Cancelación por cliente | **No** en esta fase; solo barbero u owner desde la app |
+| Descubrimiento de barbería | **Solo link o QR** por empresa (sin directorio público de barberías) |
+| Aviso al personal | **Push obligatorio** (Firebase Cloud Messaging) al crear solicitud |
+
+### Cómo el cliente elige barbería (multi-tenant)
+
+Cada `Tenant` ya tiene un **`slug` único** en PostgreSQL (`tenants.slug`). No hay pantalla “elige entre 20 barberías”:
+
+- Cada barbería comparte su URL: `https://{dominio}/agendar/{slug}`
+- Ejemplo: `https://barberia-wheat-three.vercel.app/agendar/peluqueria-centro`
+- Distribución: WhatsApp, redes, **QR impreso en el local**
+- La página carga branding de esa tenant (nombre, logo, horario desde `TenantSettings`)
+
+**Fuera de alcance Fase 6 v1:** directorio `/barberias`, login de cliente, cancelación web por el cliente, SMS/email automático al cliente.
+
+### Flujo resumido
+
+```
+Cliente (link/QR) → Web /agendar/{slug}
+  → nombre + teléfono + barbero + servicio(s) + fecha/hora
+  → API crea cita status=pending (hold del slot 24 h)
+  → Push FCM a owner + staff del barbero
+Owner/Staff en app → Aceptar → scheduled (+ recordatorio 15 min como hoy)
+                 → Rechazar → canceled
+Cron / job → pending > 24 h sin respuesta → canceled
+```
+
+### Estados de cita (cambio de modelo)
+
+Estado actual en Prisma: `scheduled`, `canceled`, `attended`, `no_show`.
+
+**Añadir:** `pending` — solicitud del cliente web esperando confirmación.
+
+| Estado | Significado |
+|--------|-------------|
+| `pending` | Cliente solicitó; slot en hold hasta aceptación, rechazo o 24 h |
+| `scheduled` | Aceptada por owner/staff (igual que hoy) |
+| `canceled` | Rechazada, expirada (24 h) o cancelada por staff |
+| `attended` / `no_show` | Sin cambio |
+
+**Campos nuevos sugeridos en `Appointment`:**
+
+| Campo | Uso |
+|-------|-----|
+| `clientPhone` | Teléfono obligatorio si `source = client_web` |
+| `source` | `staff` \| `client_web` |
+| `pendingExpiresAt` | `createdAt + 24 h` cuando `status = pending` |
+| `respondedAt` | Opcional: cuándo aceptaron/rechazaron |
+| `respondedByUserId` | Opcional: `TenantUser` que respondió |
+
+**Regla de cupo:** mientras `pending`, el horario cuenta como **ocupado** (misma validación de conflictos que `scheduled`).
+
+### Formulario web público (cliente)
+
+| Campo | Regla |
+|-------|--------|
+| Nombre | Obligatorio |
+| Teléfono | Obligatorio |
+| Barbero | Obligatorio |
+| Servicio(s) | Al menos uno |
+| Fecha y hora | Solo slots libres (misma lógica de duración/bloques que la app) |
+
+Mensaje UI: la solicitud queda pendiente de confirmación por la barbería.
+
+### Permisos aceptar / rechazar
+
+| Rol | Alcance |
+|-----|---------|
+| **owner** | Cualquier `pending` de su `tenantId` |
+| **staff** | Solo `pending` donde `appointment.barberId` = su barbero asignado |
+
+### Notificaciones push (FCM)
+
+Hoy la app solo tiene recordatorios **locales** (~15 min antes). Fase 6 requiere:
+
+1. Proyecto **Firebase** + FCM en Flutter (Android; iOS si aplica).
+2. Tabla `device_tokens` (o similar): `tenantUserId`, `fcmToken`, plataforma, `updatedAt`.
+3. Tras login en la app: registrar/actualizar token en el servidor.
+4. Al `POST` que crea `pending`: servidor envía push a owner del tenant y staff del barbero (si tiene usuario vinculado).
+
+Texto ejemplo: *“Nueva solicitud: María — 300… — Corte — vie 10:00”*.
+
+La app también lista solicitudes vía **sync**; el push es el canal principal con app cerrada.
+
+### Alcance por componente
+
+#### Web pública (`barberia-web/frontend`)
+
+| Entrega | Detalle |
+|---------|---------|
+| `GET /agendar/[slug]` | Página con branding y formulario |
+| API pública sin JWT panel | `GET` barberos, servicios, slots libres por slug |
+| `POST` solicitud | Crea `pending`, dispara push |
+| Seguridad | Rate limit por IP/slug; tenant `active` |
+
+#### API / Prisma
+
+- Migración: `pending`, campos `clientPhone`, `source`, `pendingExpiresAt`, etc.
+- Conflicto de slots incluye citas `pending`
+- Job (Vercel Cron o equivalente): expirar `pending` con `now > pendingExpiresAt`
+
+#### App móvil (`barberia/`)
+
+- Registrar token FCM al login
+- Pantalla **Solicitudes pendientes** (aceptar / rechazar)
+- Sync: pull/push citas `pending`; aceptar → `scheduled`; rechazar → `canceled`
+- Tap en push → detalle de la solicitud
+
+#### Panel (mínimo)
+
+- Por barbería: **copiar link de reserva** y generar/descargar **QR**
+- Opcional: toggle “Reservas online activas” por tenant
+
+### Subfases de implementación sugeridas
+
+| Subfase | Entregable |
+|---------|------------|
+| **6.1** | Schema Prisma + migración + API `pending` + hold 24 h + job expiración |
+| **6.2** | Web `/agendar/[slug]` con teléfono obligatorio |
+| **6.3** | App: listar, aceptar, rechazar + sync |
+| **6.4** | FCM: tokens + envío al crear solicitud |
+| **6.5** | Panel: copiar link + QR por tenant |
+
+### Criterios de aceptación Fase 6 (46–52)
+
+46. Cada barbería activa tiene URL pública `/agendar/{slug}` sin login de panel.
+47. El cliente debe ingresar **nombre y teléfono** obligatorios.
+48. La solicitud crea cita `pending` y **reserva el slot** hasta aceptación, rechazo o 24 h.
+49. Pasadas **24 h** sin respuesta, la solicitud pasa a `canceled` y el slot queda libre.
+50. El **owner** puede aceptar/rechazar cualquier `pending` de su barbería; el **staff** solo las de su barbero.
+51. Al crear `pending`, el **owner** y el **staff del barbero** reciben **notificación push**.
+52. El cliente **no** puede cancelar desde la web en esta fase (solo staff/owner en app).
+
+### Dependencias y riesgos
+
+- **FCM:** requiere cuenta Firebase y configuración Android (`google-services.json`); iOS aparte si se publica en App Store.
+- **Cron en Vercel:** definir ruta protegida para expirar solicitudes (secret `CRON_SECRET`).
+- **Sync:** citas `pending` deben integrarse en `buildPull` / `applyChanges` sin romper flujo staff/owner actual.
+- **SQLite móvil:** nuevo valor de `status` en enum local y migración de schema si aplica.
+
+### Referencias en el código actual
+
+- `Tenant.slug` — [`barberia-web/frontend/prisma/schema.prisma`](barberia-web/frontend/prisma/schema.prisma)
+- Estados de cita — enum `AppointmentStatus` (añadir `pending`)
+- Conflictos de slot — [`applyChanges.ts`](barberia-web/frontend/src/lib/server/services/sync/applyChanges.ts), `hasSlotConflict`
+- Notificaciones locales — [`notification_service.dart`](barberia/lib/core/notifications/notification_service.dart) (complementar con FCM, no reemplazar recordatorio 15 min)
 
 ---
 

@@ -263,6 +263,43 @@ class AppointmentDetailScreen extends ConsumerWidget {
 
 
 
+  Future<void> _rejectPending(BuildContext context, WidgetRef ref) async {
+    try {
+      final repo = ref.read(appointmentRepositoryProvider);
+      await repo.rejectPendingRequest(appointmentId);
+      refreshAppointments(ref);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Solicitud rechazada')),
+      );
+      context.pop();
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $error')),
+      );
+    }
+  }
+
+  Future<void> _acceptPending(BuildContext context, WidgetRef ref) async {
+    try {
+      final repo = ref.read(appointmentRepositoryProvider);
+      await repo.acceptPendingRequest(appointmentId);
+      await syncReminderById(repo, appointmentId);
+      refreshAppointments(ref);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Solicitud aceptada')),
+      );
+      context.pop();
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $error')),
+      );
+    }
+  }
+
   Future<void> _markAttendance(
 
     BuildContext context,
@@ -407,6 +444,9 @@ class AppointmentDetailScreen extends ConsumerWidget {
 
                 _DetailRow(label: 'Cliente', value: appointment.clientName),
 
+                if (appointment.clientPhone != null)
+                  _DetailRow(label: 'Teléfono', value: appointment.clientPhone!),
+
                 if (appointment.barberName != null)
 
                   _DetailRow(label: 'Barbero', value: appointment.barberName!),
@@ -451,6 +491,27 @@ class AppointmentDetailScreen extends ConsumerWidget {
                   ),
 
                 const Spacer(),
+
+                if (appointment.isPending) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _acceptPending(context, ref),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('Aceptar solicitud'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _rejectPending(context, ref),
+                      icon: const Icon(Icons.close),
+                      label: const Text('Rechazar'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
                 if (appointment.isAttended && isOwner) ...[
                   SizedBox(
@@ -653,9 +714,9 @@ class AppointmentDetailScreen extends ConsumerWidget {
 
 
   Color _statusColor(AppointmentStatus status) {
-
     switch (status) {
-
+      case AppointmentStatus.pending:
+        return Colors.orange;
       case AppointmentStatus.canceled:
 
         return AppTheme.canceled;

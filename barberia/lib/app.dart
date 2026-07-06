@@ -13,6 +13,8 @@ import 'core/notifications/appointment_notification_sync.dart';
 
 import 'core/notifications/notification_service.dart';
 
+import 'core/push/push_notification_service.dart';
+
 import 'core/theme/app_theme.dart';
 
 import 'data/database/database_helper.dart';
@@ -83,6 +85,8 @@ Future<void> bootstrap() async {
   await DatabaseHelper.instance.database;
 
   await NotificationService.instance.initialize();
+
+  await PushNotificationService.instance.initialize();
 
   await resyncAllAppointmentReminders(AppointmentRepository());
 
