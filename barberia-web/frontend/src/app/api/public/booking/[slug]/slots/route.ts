@@ -21,6 +21,8 @@ export async function GET(request: Request, context: Ctx) {
     barberId: url.searchParams.get('barberId'),
     date: url.searchParams.get('date'),
     serviceIds: url.searchParams.get('serviceIds'),
+    referenceDate: url.searchParams.get('referenceDate') ?? undefined,
+    referenceMinutes: url.searchParams.get('referenceMinutes') ?? undefined,
   });
   if (!parsed.success) {
     return badRequest('Parámetros barberId, date y serviceIds requeridos');

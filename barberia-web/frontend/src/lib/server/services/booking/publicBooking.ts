@@ -4,6 +4,7 @@ import { occupiedFromAppointments, buildBookingGrid } from '@/lib/server/utils/t
 import { expandOccupiedSlots } from '@/lib/server/utils/appointmentSlots';
 import { validateServiceDuration } from '@/lib/server/utils/serviceDuration';
 import { notifyNewPendingRequest } from '@/lib/server/services/notifications/fcm';
+import { getBookingLocalReference } from '@/lib/server/utils/bookingTimezone';
 
 const PENDING_HOLD_HOURS = 24;
 const OCCUPYING_STATUSES: AppointmentStatus[] = ['scheduled', 'pending'];
@@ -145,7 +146,7 @@ export async function getAvailableSlots(params: {
     occupiedSlots,
     durationMinutes,
     blockedTimes: blocked.slots,
-    localReference: params.localReference,
+    localReference: params.localReference ?? getBookingLocalReference(),
   });
 
   return {

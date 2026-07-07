@@ -291,19 +291,19 @@ class SyncService {
       var appointmentsBlocked = await _local.hasAppointmentsBlockedByBarber();
       if (appointmentsBlocked) {
         _lastError = appointmentBlockedMessage;
-      } else {
-        final entityChanges = await _local.buildEntityChanges();
-        if (entityChanges.isNotEmpty) {
-          lastResult = await _postChangesWithReauth(entityChanges);
-          await _local.applyIdMappings(lastResult.applied);
-          await _local.markConflicts(lastResult.conflicts);
-          conflicts.addAll(lastResult.conflicts);
-          await _local.markEntitySyncedAfterPush(lastResult.applied, entityChanges);
-        }
-        appointmentsBlocked = await _local.hasAppointmentsBlockedByBarber();
-        if (appointmentsBlocked) {
-          _lastError = appointmentBlockedMessage;
-        }
+      }
+
+      final entityChanges = await _local.buildEntityChanges();
+      if (entityChanges.isNotEmpty) {
+        lastResult = await _postChangesWithReauth(entityChanges);
+        await _local.applyIdMappings(lastResult.applied);
+        await _local.markConflicts(lastResult.conflicts);
+        conflicts.addAll(lastResult.conflicts);
+        await _local.markEntitySyncedAfterPush(lastResult.applied, entityChanges);
+      }
+      appointmentsBlocked = await _local.hasAppointmentsBlockedByBarber();
+      if (appointmentsBlocked) {
+        _lastError = appointmentBlockedMessage;
       }
 
       String serverTime;

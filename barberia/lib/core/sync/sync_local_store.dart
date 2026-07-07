@@ -430,13 +430,31 @@ class SyncLocalStore {
     Map<String, dynamic> pushedChanges,
   ) async {
     final db = await _databaseHelper.database;
-    await _markSyncedByServerIdInPayload(db, 'appointments', pushedChanges['appointments']);
-    await _markSyncedByServerIdInPayload(
+    await _markSyncedByAppliedServerIds(db, 'appointments', applied['appointments']);
+    await _markSyncedByAppliedServerIds(
       db,
       'barber_schedule_blocks',
-      pushedChanges['scheduleBlocks'],
+      applied['scheduleBlocks'],
     );
-    await _markSyncedByServerIdInPayload(db, 'pos_invoices', pushedChanges['posInvoices']);
+    await _markSyncedByAppliedServerIds(db, 'pos_invoices', applied['posInvoices']);
+  }
+
+  Future<void> _markSyncedByAppliedServerIds(
+    Database db,
+    String table,
+    Map<String, String>? appliedMap,
+  ) async {
+    if (appliedMap == null || appliedMap.isEmpty) return;
+    final serverIds = appliedMap.values.toSet();
+    for (final serverId in serverIds) {
+      if (serverId.isEmpty) continue;
+      await db.update(
+        table,
+        {'sync_status': Schema.syncStatusSynced},
+        where: 'server_id = ? AND sync_status = ?',
+        whereArgs: [serverId, Schema.syncStatusPending],
+      );
+    }
   }
 
   Future<void> markSyncedAfterPush(

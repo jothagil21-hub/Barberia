@@ -268,10 +268,18 @@ async function upsertAppointment(
       return;
     }
     if (!isNewer(item.updatedAt, existing.updatedAt)) {
-      if (existing.status === 'attended') {
-        await ensurePosInvoiceForAttendedAppointment(tenantId, existing.id);
+      const isPendingResponse =
+        existing.status === 'pending' &&
+        (status === 'scheduled' || status === 'canceled');
+      const canReleaseSlot =
+        status === 'canceled' &&
+        (existing.status === 'scheduled' || existing.status === 'pending');
+      if (!isPendingResponse && !canReleaseSlot) {
+        if (existing.status === 'attended') {
+          await ensurePosInvoiceForAttendedAppointment(tenantId, existing.id);
+        }
+        return;
       }
-      return;
     }
 
     const wasPending = existing.status === 'pending';
@@ -311,6 +319,7 @@ async function upsertAppointment(
       }
     });
     if (item.clientId) applied.appointments[item.clientId] = existing.id;
+    if (item.id) applied.appointments[item.id] = existing.id;
     if (status === 'attended') {
       await ensurePosInvoiceForAttendedAppointment(tenantId, existing.id);
     }
