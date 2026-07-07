@@ -76,6 +76,7 @@ export async function getAvailableSlots(params: {
   barberId: string;
   date: string;
   serviceIds: string[];
+  localReference?: { date: string; minutesSinceMidnight: number };
 }) {
   const catalog = await getPublicBookingCatalog(params.slug);
   if (!catalog) return { error: 'not_found' as const };
@@ -144,6 +145,7 @@ export async function getAvailableSlots(params: {
     occupiedSlots,
     durationMinutes,
     blockedTimes: blocked.slots,
+    localReference: params.localReference,
   });
 
   return {

@@ -1798,6 +1798,16 @@ select.table-select:focus {
 
   gap: 0.5rem;
 
+  margin-top: 0.5rem;
+
+}
+
+.booking-slot-hint {
+
+  margin: 0;
+
+  font-size: 0.85rem;
+
 }
 
 

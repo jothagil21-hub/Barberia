@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getPublicBookingCatalog } from '@/lib/server/services/booking/publicBooking';
+import { resolvePublicAssetUrl } from '@/lib/server/utils/publicAssetUrl';
 import { notFound } from '@/lib/server/route-helpers';
 
 export const runtime = 'nodejs';
@@ -20,7 +21,7 @@ export async function GET(_request: Request, context: Ctx) {
 
   return Response.json({
     displayName: catalog.displayName,
-    logoUrl: catalog.logoUrl,
+    logoUrl: resolvePublicAssetUrl(catalog.logoUrl),
     scheduleStart: catalog.scheduleStart,
     scheduleEnd: catalog.scheduleEnd,
     scheduleInterval: catalog.scheduleInterval,

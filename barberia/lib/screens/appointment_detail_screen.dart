@@ -14,9 +14,13 @@ import '../core/notifications/appointment_notification_sync.dart';
 
 import '../core/theme/app_theme.dart';
 
+import '../core/utils/whatsapp_confirm.dart';
+
 import '../core/export/pos_invoice_pdf_exporter.dart';
 
 import '../core/utils/currency_formatter.dart';
+
+import '../data/models/appointment.dart';
 
 import '../data/repositories/pos_invoice_repository.dart';
 
@@ -281,16 +285,29 @@ class AppointmentDetailScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _acceptPending(BuildContext context, WidgetRef ref) async {
+  Future<void> _acceptPending(
+    BuildContext context,
+    WidgetRef ref,
+    Appointment appointment,
+  ) async {
     try {
       final repo = ref.read(appointmentRepositoryProvider);
       await repo.acceptPendingRequest(appointmentId);
       await syncReminderById(repo, appointmentId);
       refreshAppointments(ref);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solicitud aceptada')),
+
+      final fresh =
+          await repo.getAppointmentById(appointmentId) ?? appointment;
+      final shopName =
+          ref.read(appSettingsProvider).value?.shopName ?? 'la barbería';
+      await offerWhatsAppAfterAccept(
+        context,
+        appointment: fresh,
+        shopName: shopName,
       );
+
+      if (!context.mounted) return;
       context.pop();
     } catch (error) {
       if (!context.mounted) return;
@@ -298,6 +315,19 @@ class AppointmentDetailScreen extends ConsumerWidget {
         SnackBar(content: Text('Error: $error')),
       );
     }
+  }
+
+  Future<void> _resendWhatsApp(
+    BuildContext context,
+    WidgetRef ref,
+    Appointment appointment,
+  ) async {
+    final shopName = ref.read(appSettingsProvider).value?.shopName ?? 'la barbería';
+    await openWhatsAppConfirmation(
+      context,
+      appointment: appointment,
+      shopName: shopName,
+    );
   }
 
   Future<void> _markAttendance(
@@ -396,107 +426,214 @@ class AppointmentDetailScreen extends ConsumerWidget {
 
           final isOwner = ref.watch(authProvider).value?.isOwner ?? true;
 
-          return Padding(
+          return Column(
 
-            padding: const EdgeInsets.all(16),
+            children: [
 
-            child: Column(
+              Expanded(
 
-              crossAxisAlignment: CrossAxisAlignment.start,
+                child: SingleChildScrollView(
 
-              children: [
+                  padding: const EdgeInsets.all(16),
 
-                if (!appointment.isScheduled)
+                  child: Column(
 
-                  Container(
+                    crossAxisAlignment: CrossAxisAlignment.start,
 
-                    padding:
+                    children: [
 
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      if (!appointment.isScheduled)
 
-                    decoration: BoxDecoration(
+                        Container(
 
-                      color: _statusColor(appointment.status)
+                          padding: const EdgeInsets.symmetric(
 
-                          .withValues(alpha: 0.2),
+                            horizontal: 12,
 
-                      borderRadius: BorderRadius.circular(8),
+                            vertical: 6,
 
-                    ),
+                          ),
 
-                    child: Text(
+                          decoration: BoxDecoration(
 
-                      appointment.status.displayLabel.toUpperCase(),
+                            color: _statusColor(appointment.status)
 
-                      style: TextStyle(
+                                .withValues(alpha: 0.2),
 
-                        color: _statusColor(appointment.status),
+                            borderRadius: BorderRadius.circular(8),
 
-                        fontWeight: FontWeight.bold,
+                          ),
+
+                          child: Text(
+
+                            appointment.status.displayLabel.toUpperCase(),
+
+                            style: TextStyle(
+
+                              color: _statusColor(appointment.status),
+
+                              fontWeight: FontWeight.bold,
+
+                            ),
+
+                          ),
+
+                        ),
+
+                      if (!appointment.isScheduled) const SizedBox(height: 16),
+
+                      _DetailRow(label: 'Cliente', value: appointment.clientName),
+
+                      if (appointment.clientPhone != null)
+                        _DetailRow(
+                          label: 'Teléfono',
+                          value: appointment.clientPhone!,
+                        ),
+
+                      if (appointment.barberName != null)
+
+                        _DetailRow(
+                          label: 'Barbero',
+                          value: appointment.barberName!,
+                        ),
+
+                      _DetailRow(
+
+                        label: 'Fecha',
+
+                        value: dateLabel[0].toUpperCase() +
+                            dateLabel.substring(1),
 
                       ),
 
+                      _DetailRow(label: 'Hora', value: appointment.time),
+
+                      _DetailRow(
+                        label: 'Duración',
+                        value: '${appointment.durationMinutes} min',
+                      ),
+
+                      _DetailRow(
+                        label: 'Servicios',
+                        value: appointment.servicesLabel,
+                      ),
+
+                      if (appointment.totalPrice > 0)
+
+                        _DetailRow(
+
+                          label: 'Total',
+
+                          value: CurrencyFormatter.format(
+                            appointment.totalPrice,
+                          ),
+
+                        ),
+
+                      if (appointment.canceledAt != null)
+
+                        _DetailRow(
+
+                          label: 'Cancelada el',
+
+                          value: DateFormat('d/M/yyyy HH:mm').format(
+                            DateTime.parse(appointment.canceledAt!),
+                          ),
+
+                        ),
+
+                      if (appointment.isScheduled && !appointment.canModify)
+
+                        Padding(
+
+                          padding: const EdgeInsets.only(top: 16),
+
+                          child: Container(
+
+                            width: double.infinity,
+
+                            padding: const EdgeInsets.all(12),
+
+                            decoration: BoxDecoration(
+
+                              color: AppTheme.canceled.withValues(alpha: 0.15),
+
+                              borderRadius: BorderRadius.circular(8),
+
+                            ),
+
+                            child: Text(
+
+                              canMarkAttendance
+
+                                  ? 'Esta cita ya pasó. Registra si el cliente asistió.'
+
+                                  : 'Esta cita ya pasó y no puede modificarse',
+
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+
+                                    color: AppTheme.textSecondary,
+
+                                  ),
+
+                            ),
+
+                          ),
+
+                        ),
+
+                    ],
+
+                  ),
+
+                ),
+
+              ),
+
+              Container(
+
+                width: double.infinity,
+
+                decoration: BoxDecoration(
+
+                  color: Theme.of(context).scaffoldBackgroundColor,
+
+                  border: Border(
+
+                    top: BorderSide(
+
+                      color: AppTheme.textSecondary.withValues(alpha: 0.2),
+
                     ),
 
                   ),
 
-                if (!appointment.isScheduled) const SizedBox(height: 16),
-
-                _DetailRow(label: 'Cliente', value: appointment.clientName),
-
-                if (appointment.clientPhone != null)
-                  _DetailRow(label: 'Teléfono', value: appointment.clientPhone!),
-
-                if (appointment.barberName != null)
-
-                  _DetailRow(label: 'Barbero', value: appointment.barberName!),
-
-                _DetailRow(
-
-                  label: 'Fecha',
-
-                  value: dateLabel[0].toUpperCase() + dateLabel.substring(1),
-
                 ),
 
-                _DetailRow(label: 'Hora', value: appointment.time),
+                child: SafeArea(
 
-                _DetailRow(
-                  label: 'Duración',
-                  value: '${appointment.durationMinutes} min',
-                ),
+                  top: false,
 
-                _DetailRow(label: 'Servicios', value: appointment.servicesLabel),
+                  child: Padding(
 
-                if (appointment.totalPrice > 0)
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
 
-                  _DetailRow(
+                    child: Column(
 
-                    label: 'Total',
+                      mainAxisSize: MainAxisSize.min,
 
-                    value: CurrencyFormatter.format(appointment.totalPrice),
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
 
-                  ),
-
-                if (appointment.canceledAt != null)
-
-                  _DetailRow(
-
-                    label: 'Cancelada el',
-
-                    value: DateFormat('d/M/yyyy HH:mm')
-
-                        .format(DateTime.parse(appointment.canceledAt!)),
-
-                  ),
-
-                const Spacer(),
+                      children: [
 
                 if (appointment.isPending) ...[
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: () => _acceptPending(context, ref),
+                      onPressed: () => _acceptPending(context, ref, appointment),
                       icon: const Icon(Icons.check_circle_outline),
                       label: const Text('Aceptar solicitud'),
                     ),
@@ -513,6 +650,24 @@ class AppointmentDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 12),
                 ],
 
+                if (appointment.isScheduled &&
+                    appointment.clientPhone != null &&
+                    appointment.clientPhone!.trim().isNotEmpty) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _resendWhatsApp(context, ref, appointment),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366),
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.chat_outlined),
+                      label: const Text('Reenviar aviso por WhatsApp'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
                 if (appointment.isAttended && isOwner) ...[
                   SizedBox(
                     width: double.infinity,
@@ -524,40 +679,6 @@ class AppointmentDetailScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                 ],
-
-                if (appointment.isScheduled && !appointment.canModify)
-
-                  Container(
-
-                    width: double.infinity,
-
-                    padding: const EdgeInsets.all(12),
-
-                    decoration: BoxDecoration(
-
-                      color: AppTheme.canceled.withValues(alpha: 0.15),
-
-                      borderRadius: BorderRadius.circular(8),
-
-                    ),
-
-                    child: Text(
-
-                      canMarkAttendance
-
-                          ? 'Esta cita ya pasó. Registra si el cliente asistió.'
-
-                          : 'Esta cita ya pasó y no puede modificarse',
-
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-
-                            color: AppTheme.textSecondary,
-
-                          ),
-
-                    ),
-
-                  ),
 
                 if (canMarkAttendance) ...[
 
@@ -595,6 +716,8 @@ class AppointmentDetailScreen extends ConsumerWidget {
 
                   ),
 
+                  const SizedBox(height: 12),
+
                 ],
 
                 if (appointment.canReactivateAt(DateTime.now())) ...[
@@ -614,6 +737,8 @@ class AppointmentDetailScreen extends ConsumerWidget {
                     ),
 
                   ),
+
+                  const SizedBox(height: 12),
 
                 ],
 
@@ -697,9 +822,17 @@ class AppointmentDetailScreen extends ConsumerWidget {
 
                 ],
 
-              ],
+                      ],
 
-            ),
+                    ),
+
+                  ),
+
+                ),
+
+              ),
+
+            ],
 
           );
 

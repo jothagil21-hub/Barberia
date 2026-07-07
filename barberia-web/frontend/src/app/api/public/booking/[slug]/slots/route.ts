@@ -8,6 +8,8 @@ const querySchema = z.object({
   barberId: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   serviceIds: z.string().min(1),
+  referenceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  referenceMinutes: z.coerce.number().int().min(0).max(24 * 60 - 1).optional(),
 });
 
 type Ctx = { params: Promise<{ slug: string }> };
@@ -25,11 +27,20 @@ export async function GET(request: Request, context: Ctx) {
   }
 
   const serviceIds = parsed.data.serviceIds.split(',').filter(Boolean);
+  const localReference =
+    parsed.data.referenceDate != null && parsed.data.referenceMinutes != null
+      ? {
+          date: parsed.data.referenceDate,
+          minutesSinceMidnight: parsed.data.referenceMinutes,
+        }
+      : undefined;
+
   const result = await getAvailableSlots({
     slug,
     barberId: parsed.data.barberId,
     date: parsed.data.date,
     serviceIds,
+    localReference,
   });
 
   if ('error' in result) {

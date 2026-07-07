@@ -418,13 +418,47 @@ class _HomeTopBarState extends ConsumerState<HomeTopBar> {
 
       width: double.infinity,
 
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-
       color: AppTheme.surface,
 
-      child: Row(
+      child: Column(
+
+        crossAxisAlignment: CrossAxisAlignment.stretch,
 
         children: [
+
+          Padding(
+
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+
+            child: Text(
+
+              shopName,
+
+              textAlign: TextAlign.center,
+
+              maxLines: 2,
+
+              overflow: TextOverflow.ellipsis,
+
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+
+                    fontWeight: FontWeight.bold,
+
+                    color: AppTheme.textPrimary,
+
+                  ),
+
+            ),
+
+          ),
+
+          Padding(
+
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+
+            child: Row(
+
+              children: [
 
           IconButton(
 
@@ -453,20 +487,6 @@ class _HomeTopBarState extends ConsumerState<HomeTopBar> {
               crossAxisAlignment: CrossAxisAlignment.start,
 
               children: [
-
-                Text(
-
-                  shopName,
-
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-
-                        fontWeight: FontWeight.bold,
-
-                        color: AppTheme.textPrimary,
-
-                      ),
-
-                ),
 
                 if (auth != null)
                   Text(
@@ -604,6 +624,12 @@ class _HomeTopBarState extends ConsumerState<HomeTopBar> {
               ),
 
             ],
+
+          ),
+
+              ],
+
+            ),
 
           ),
 

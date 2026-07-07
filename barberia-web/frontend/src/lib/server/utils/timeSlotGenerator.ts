@@ -65,15 +65,30 @@ export function buildBookingGrid(params: {
   durationMinutes: number;
   blockedTimes?: string[];
   reference?: Date;
+  /** Hoy y hora actual en el navegador del cliente (evita UTC en Vercel). */
+  localReference?: { date: string; minutesSinceMidnight: number };
 }): SlotEntry[] {
-  const { config, date, occupiedSlots, durationMinutes, blockedTimes = [], reference = new Date() } =
-    params;
+  const {
+    config,
+    date,
+    occupiedSlots,
+    durationMinutes,
+    blockedTimes = [],
+    reference = new Date(),
+    localReference,
+  } = params;
+
   const day = new Date(`${date}T12:00:00`);
-  const today = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
-  const isToday =
-    day.getFullYear() === today.getFullYear() &&
-    day.getMonth() === today.getMonth() &&
-    day.getDate() === today.getDate();
+  const isToday = localReference
+    ? date === localReference.date
+    : (() => {
+        const today = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+        return (
+          day.getFullYear() === today.getFullYear() &&
+          day.getMonth() === today.getMonth() &&
+          day.getDate() === today.getDate()
+        );
+      })();
 
   const occupiedSet = new Set(occupiedSlots);
   const blockedSet = new Set(blockedTimes);
@@ -81,9 +96,13 @@ export function buildBookingGrid(params: {
 
   let current = parseTime(config.scheduleStart);
   const end = parseTime(config.scheduleEnd);
+  const step = Math.min(config.scheduleInterval, SERVICE_DURATION_BLOCK);
+
   while (current < end) {
     const slot = formatTime(current);
-    const isPast = isToday && slotDateTime(day, slot) < reference;
+    const isPast = localReference
+      ? isToday && current < localReference.minutesSinceMidnight
+      : isToday && slotDateTime(day, slot) < reference;
     const slotOccupied = occupiedSet.has(slot);
     const slotBlocked = blockedSet.has(slot);
     const fits = canFitAtStart(
@@ -108,7 +127,7 @@ export function buildBookingGrid(params: {
       entries.push({ time: slot, status: 'available' });
     }
 
-    current += SERVICE_DURATION_BLOCK;
+    current += step;
   }
 
   return entries;

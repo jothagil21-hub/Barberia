@@ -84,10 +84,13 @@ export default function PublicBookingPage() {
     setSlotsLoading(true);
     setFormError('');
     try {
+      const now = new Date();
       const qs = new URLSearchParams({
         barberId,
         date,
         serviceIds: serviceIds.join(','),
+        referenceDate: toIso(now),
+        referenceMinutes: String(now.getHours() * 60 + now.getMinutes()),
       });
       const res = await fetch(`/api/public/booking/${slug}/slots?${qs}`);
       const data = await res.json();
@@ -174,7 +177,10 @@ export default function PublicBookingPage() {
     );
   }
 
-  const catalogLogoUrl = logoSrc(catalog.logoUrl);
+  const catalogLogoUrl =
+    catalog.logoUrl?.startsWith('http') == true
+        ? catalog.logoUrl
+        : logoSrc(catalog.logoUrl);
 
   return (
     <main className="container booking-page">
@@ -279,7 +285,13 @@ export default function PublicBookingPage() {
             ) : slots.length === 0 ? (
               <p className="muted">No hay horarios libres para esta fecha</p>
             ) : (
-              <div className="booking-slot-grid">
+              <>
+                <p className="muted booking-slot-hint">
+                  {slots.length} horario{slots.length === 1 ? '' : 's'} disponible
+                  {slots.length === 1 ? '' : 's'} para {totalDuration} min de servicio. Los
+                  horarios ya pasados hoy no se muestran.
+                </p>
+                <div className="booking-slot-grid">
                 {slots.map((slot) => (
                   <button
                     key={slot}
@@ -290,7 +302,8 @@ export default function PublicBookingPage() {
                     {slot}
                   </button>
                 ))}
-              </div>
+                </div>
+              </>
             )}
           </div>
 

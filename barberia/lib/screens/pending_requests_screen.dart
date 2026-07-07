@@ -5,21 +5,35 @@ import 'package:intl/intl.dart';
 
 import '../core/notifications/appointment_notification_sync.dart';
 import '../core/theme/app_theme.dart';
+import '../core/utils/whatsapp_confirm.dart';
+import '../data/models/appointment.dart';
 import '../providers/providers.dart';
 import '../widgets/appointment_card.dart';
 
 class PendingRequestsScreen extends ConsumerWidget {
   const PendingRequestsScreen({super.key});
 
-  Future<void> _accept(BuildContext context, WidgetRef ref, int id) async {
+  Future<void> _accept(
+    BuildContext context,
+    WidgetRef ref,
+    Appointment appointment,
+  ) async {
     try {
       final repo = ref.read(appointmentRepositoryProvider);
-      await repo.acceptPendingRequest(id);
-      await syncReminderById(repo, id);
+      await repo.acceptPendingRequest(appointment.id);
+      await syncReminderById(repo, appointment.id);
       refreshAppointments(ref);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solicitud aceptada')),
+
+      final fresh =
+          await repo.getAppointmentById(appointment.id) ?? appointment;
+      final shopName =
+          ref.read(appSettingsProvider).value?.shopName ?? 'la barbería';
+
+      await offerWhatsAppAfterAccept(
+        context,
+        appointment: fresh,
+        shopName: shopName,
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -128,7 +142,7 @@ class PendingRequestsScreen extends ConsumerWidget {
                           const SizedBox(width: 8),
                           Expanded(
                             child: FilledButton(
-                              onPressed: () => _accept(context, ref, appointment.id),
+                              onPressed: () => _accept(context, ref, appointment),
                               child: const Text('Aceptar'),
                             ),
                           ),
