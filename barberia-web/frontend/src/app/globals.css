@@ -1541,8 +1541,6 @@ select.table-select:focus {
     justify-content: space-between;
   }
 }
-  overflow-x: auto;
-}
 
 .text-right {
   text-align: right;
