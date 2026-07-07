@@ -8,6 +8,7 @@ import { InlineAlert } from '@/components/InlineAlert';
 import { LoadingBlock } from '@/components/LoadingBlock';
 import { LoadingButton } from '@/components/LoadingButton';
 import { SelectField } from '@/components/SelectField';
+import { logoSrc } from '@/lib/api';
 import { toIso } from '@/lib/date-utils';
 
 type Barber = { id: string; name: string };
@@ -173,13 +174,15 @@ export default function PublicBookingPage() {
     );
   }
 
+  const catalogLogoUrl = logoSrc(catalog.logoUrl);
+
   return (
     <main className="container booking-page">
       <header className="booking-header">
-        {catalog.logoUrl ? (
+        {catalogLogoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={catalog.logoUrl}
+            src={catalogLogoUrl}
             alt=""
             className="booking-logo"
             width={56}
