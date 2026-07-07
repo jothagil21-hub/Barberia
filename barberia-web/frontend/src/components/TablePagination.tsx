@@ -2,7 +2,7 @@
 
 import { SelectField } from '@/components/SelectField';
 
-const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 25, 50];
 
 type TablePaginationProps = {
   page: number;
