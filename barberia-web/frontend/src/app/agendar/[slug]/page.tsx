@@ -274,7 +274,13 @@ export default function PublicBookingPage() {
             </p>
           )}
 
-          <DatePicker value={date} onChange={setDate} label="Fecha" id="booking-date" />
+          <DatePicker
+            value={date}
+            onChange={setDate}
+            label="Fecha"
+            id="booking-date"
+            minDate={new Date()}
+          />
 
           <div className="field">
             <span className="field-label">Hora disponible</span>

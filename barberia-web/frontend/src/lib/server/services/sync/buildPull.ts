@@ -37,7 +37,18 @@ export async function buildPullBundle(
     updatedAt: tenant.updatedAt,
   };
 
-  const [barbers, services, appointments, scheduleBlocks, posInvoices] = await Promise.all([
+  const [
+    barbers,
+    services,
+    appointments,
+    scheduleBlocks,
+    posInvoices,
+    barberSnapshot,
+    serviceSnapshot,
+    appointmentSnapshot,
+    scheduleBlockSnapshot,
+    posInvoiceSnapshot,
+  ] = await Promise.all([
     prisma.barber.findMany({
       where: {
         tenantId,
@@ -74,6 +85,38 @@ export async function buildPullBundle(
         ...(sinceFilter ? { updatedAt: sinceFilter } : {}),
       },
       orderBy: { updatedAt: 'asc' },
+    }),
+    prisma.barber.findMany({
+      where: {
+        tenantId,
+        ...(staffBarberId ? { id: staffBarberId } : {}),
+      },
+      select: { id: true },
+    }),
+    prisma.service.findMany({
+      where: { tenantId },
+      select: { id: true },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        tenantId,
+        ...(staffBarberId ? { barberId: staffBarberId } : {}),
+      },
+      select: { id: true },
+    }),
+    prisma.scheduleBlock.findMany({
+      where: {
+        tenantId,
+        ...(staffBarberId ? { barberId: staffBarberId } : {}),
+      },
+      select: { id: true },
+    }),
+    prisma.posInvoice.findMany({
+      where: {
+        tenantId,
+        ...(staffBarberId ? { appointment: { barberId: staffBarberId } } : {}),
+      },
+      select: { id: true },
     }),
   ]);
 
@@ -159,6 +202,13 @@ export async function buildPullBundle(
       lines: inv.lines as PosInvoiceLine[],
       updatedAt: toIso(inv.updatedAt),
     })),
+    snapshots: {
+      barbers: barberSnapshot.map((b) => b.id),
+      services: serviceSnapshot.map((s) => s.id),
+      appointments: appointmentSnapshot.map((a) => a.id),
+      scheduleBlocks: scheduleBlockSnapshot.map((b) => b.id),
+      posInvoices: posInvoiceSnapshot.map((inv) => inv.id),
+    },
   };
 }
 

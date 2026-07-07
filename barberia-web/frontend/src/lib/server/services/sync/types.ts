@@ -76,6 +76,14 @@ export type SyncSettings = {
   updatedAt: string;
 };
 
+export type SyncEntitySnapshots = {
+  barbers: string[];
+  services: string[];
+  appointments: string[];
+  scheduleBlocks: string[];
+  posInvoices: string[];
+};
+
 export type SyncPullBundle = {
   serverTime: string;
   settings: SyncSettings;
@@ -84,6 +92,7 @@ export type SyncPullBundle = {
   appointments: SyncAppointment[];
   scheduleBlocks: SyncScheduleBlock[];
   posInvoices: SyncPosInvoice[];
+  snapshots: SyncEntitySnapshots;
 };
 
 export type UpsertBarber = {

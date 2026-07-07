@@ -47,6 +47,8 @@ export async function POST(request: Request, context: Ctx) {
           { error: 'El horario ya no está disponible. Elige otro.' },
           { status: 409 },
         );
+      case 'slot_in_past':
+        return badRequest('No se puede agendar en una fecha u horario pasado.');
       default:
         return badRequest('Datos inválidos');
     }

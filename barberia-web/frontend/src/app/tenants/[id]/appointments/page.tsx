@@ -12,10 +12,13 @@ import { LoadingBlock } from '@/components/LoadingBlock';
 import { LoadingButton } from '@/components/LoadingButton';
 import { Modal } from '@/components/Modal';
 import { PageHeader } from '@/components/PageHeader';
+import { TablePagination } from '@/components/TablePagination';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useToast } from '@/components/useToast';
 import { api, ApiError, TenantAppointmentsDay, TenantPosInvoice } from '@/lib/api';
 import { downloadPosInvoicePdf, openPosInvoicePdf } from '@/lib/pos-invoice-pdf';
+
+const DEFAULT_PAGE_SIZE = 10;
 
 function todayIso(): string {
   const d = new Date();
@@ -34,6 +37,12 @@ const STATUS_CLASS: Record<string, string> = {
   attended: 'badge badge-success',
   canceled: 'badge badge-muted',
   no_show: 'badge badge-warning',
+  pending: 'badge badge-warning',
+};
+
+type AppointmentRow = TenantAppointmentsDay['barbers'][number]['appointments'][number] & {
+  barberId: string;
+  barberName: string;
 };
 
 function InvoiceLink({
@@ -75,6 +84,8 @@ export default function TenantAppointmentsPage() {
   const { showError } = useToast();
 
   const [date, setDate] = useState(todayIso);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [data, setData] = useState<TenantAppointmentsDay | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -120,12 +131,42 @@ export default function TenantAppointmentsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [date, pageSize]);
+
   useAutoRefresh(() => load({ silent: true }), [id, date]);
 
-  const totalAppointments = useMemo(
-    () => data?.barbers.reduce((sum, b) => sum + b.appointments.length, 0) ?? 0,
-    [data],
+  const allRows = useMemo<AppointmentRow[]>(() => {
+    if (!data) return [];
+    return data.barbers
+      .flatMap((barber) =>
+        barber.appointments.map((apt) => ({
+          ...apt,
+          barberId: barber.id,
+          barberName: barber.name,
+        })),
+      )
+      .sort(
+        (a, b) =>
+          a.time.localeCompare(b.time) || a.barberName.localeCompare(b.barberName),
+      );
+  }, [data]);
+
+  const totalAppointments = allRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalAppointments / pageSize));
+  const safePage = Math.min(page, totalPages);
+
+  const paginatedRows = useMemo(
+    () => allRows.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [allRows, safePage, pageSize],
   );
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <AuthGuard>
@@ -133,7 +174,7 @@ export default function TenantAppointmentsPage() {
       <main className="container">
         <PageHeader
           title={data?.tenantName ?? 'Citas'}
-          subtitle="Agenda del día por barbero (solo lectura, sincronizada desde la app)."
+          subtitle="Agenda del día (solo lectura, sincronizada desde la app)."
           actions={
             <>
               <DatePicker value={date} onChange={setDate} id="appointments-date" />
@@ -162,67 +203,76 @@ export default function TenantAppointmentsPage() {
             </div>
           )}
 
-        {!initialLoading && data && totalAppointments === 0 && (
-          <EmptyState
-            title="Sin citas este día"
-            description="No hay citas programadas para la fecha seleccionada. Las citas aparecen aquí cuando la app móvil las sincroniza."
-          />
-        )}
+          {!initialLoading && data && totalAppointments === 0 && (
+            <EmptyState
+              title="Sin citas este día"
+              description="No hay citas programadas para la fecha seleccionada. Las citas aparecen aquí cuando la app móvil las sincroniza."
+            />
+          )}
 
-        {!initialLoading &&
-          data?.barbers.map((barber) => (
-            <div key={barber.id} className="card card-spaced">
-              <h2>{barber.name}</h2>
-              {barber.appointments.length === 0 ? (
-                <p className="muted">Sin citas</p>
-              ) : (
-                <div className="table-scroll">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Hora</th>
-                        <th>Cliente</th>
-                        <th>Servicios</th>
-                        <th>Estado</th>
-                        <th className="text-right">Total</th>
-                        <th />
+          {!initialLoading && totalAppointments > 0 && (
+            <div className="card card-spaced">
+              <TablePagination
+                page={safePage}
+                pageSize={pageSize}
+                totalItems={totalAppointments}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
+
+              <div className="table-scroll">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Hora</th>
+                      <th>Barbero</th>
+                      <th>Cliente</th>
+                      <th>Servicios</th>
+                      <th>Estado</th>
+                      <th className="text-right">Total</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedRows.map((apt) => (
+                      <tr key={apt.id}>
+                        <td>{apt.time}</td>
+                        <td>{apt.barberName}</td>
+                        <td>{apt.clientName}</td>
+                        <td>{apt.services.map((s) => s.name).join(', ') || '—'}</td>
+                        <td>
+                          <span className={STATUS_CLASS[apt.status] ?? 'badge'}>
+                            {apt.statusLabel}
+                          </span>
+                        </td>
+                        <td className="text-right">{formatPrice(apt.totalPrice)}</td>
+                        <td>
+                          {apt.status === 'attended' ? (
+                            <InvoiceLink
+                              tenantId={id}
+                              appointmentId={apt.id}
+                              onShow={setInvoiceModal}
+                              onError={showError}
+                            />
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {barber.appointments.map((apt) => (
-                        <tr key={apt.id}>
-                          <td>{apt.time}</td>
-                          <td>{apt.clientName}</td>
-                          <td>
-                            {apt.services.map((s) => s.name).join(', ') || '—'}
-                          </td>
-                          <td>
-                            <span className={STATUS_CLASS[apt.status] ?? 'badge'}>
-                              {apt.statusLabel}
-                            </span>
-                          </td>
-                          <td className="text-right">{formatPrice(apt.totalPrice)}</td>
-                          <td>
-                            {apt.status === 'attended' ? (
-                              <InvoiceLink
-                                tenantId={id}
-                                appointmentId={apt.id}
-                                onShow={setInvoiceModal}
-                                onError={showError}
-                              />
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          ))}
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
+              <TablePagination
+                page={safePage}
+                pageSize={pageSize}
+                totalItems={totalAppointments}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
+            </div>
+          )}
         </div>
 
         <Link href="/dashboard" className="back-link">

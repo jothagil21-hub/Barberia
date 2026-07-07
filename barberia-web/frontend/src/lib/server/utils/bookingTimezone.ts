@@ -45,3 +45,20 @@ export function formatBookingTime(now = new Date()): string {
     timeStyle: 'long',
   }).format(now);
 }
+
+export function timeToMinutesSinceMidnight(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+/** true si la fecha/hora de la cita ya pasó en la zona de reservas. */
+export function isBookingSlotInPast(
+  date: string,
+  time: string,
+  now = new Date(),
+): boolean {
+  const ref = getBookingLocalReference(now);
+  if (date < ref.date) return true;
+  if (date > ref.date) return false;
+  return timeToMinutesSinceMidnight(time) < ref.minutesSinceMidnight;
+}

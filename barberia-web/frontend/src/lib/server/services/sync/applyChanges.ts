@@ -1,6 +1,7 @@
 import type { TenantUserRole } from '@prisma/client';
 import { prisma } from '@/lib/server/prisma';
 import { rangesOverlap } from '@/lib/server/utils/appointmentSlots';
+import { isBookingSlotInPast } from '@/lib/server/utils/bookingTimezone';
 import { validateServiceDuration } from '@/lib/server/utils/serviceDuration';
 import { validateScheduleConfig } from '@/lib/server/utils/schedule';
 import { buildPullBundle, parseAppointmentStatus } from '@/lib/server/services/sync/buildPull';
@@ -218,6 +219,19 @@ async function upsertAppointment(
   }
 
   const status = parseAppointmentStatus(item.status);
+
+  if (
+    (status === 'scheduled' || status === 'pending') &&
+    isBookingSlotInPast(item.date, item.time)
+  ) {
+    conflicts.push({
+      entity: 'appointment',
+      clientId: item.clientId,
+      serverId: item.id,
+      reason: 'No se puede agendar en un horario pasado',
+    });
+    return;
+  }
 
   if (status === 'scheduled' || status === 'pending') {
     const excludeId = item.id;

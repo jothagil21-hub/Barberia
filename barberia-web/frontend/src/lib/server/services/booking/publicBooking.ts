@@ -4,7 +4,10 @@ import { occupiedFromAppointments, buildBookingGrid } from '@/lib/server/utils/t
 import { expandOccupiedSlots } from '@/lib/server/utils/appointmentSlots';
 import { validateServiceDuration } from '@/lib/server/utils/serviceDuration';
 import { notifyNewPendingRequest } from '@/lib/server/services/notifications/fcm';
-import { getBookingLocalReference } from '@/lib/server/utils/bookingTimezone';
+import {
+  getBookingLocalReference,
+  isBookingSlotInPast,
+} from '@/lib/server/utils/bookingTimezone';
 
 const PENDING_HOLD_HOURS = 24;
 const OCCUPYING_STATUSES: AppointmentStatus[] = ['scheduled', 'pending'];
@@ -222,6 +225,10 @@ export async function createPublicBookingRequest(input: CreateBookingRequestInpu
       error: 'invalid_duration' as const,
       message: e instanceof Error ? e.message : 'Duración inválida',
     };
+  }
+
+  if (isBookingSlotInPast(input.date, input.time)) {
+    return { error: 'slot_in_past' as const };
   }
 
   const blocked = await getBlockedSlots(tenant.id, barber.id, input.date);

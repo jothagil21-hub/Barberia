@@ -79,16 +79,17 @@ export function buildBookingGrid(params: {
   } = params;
 
   const day = new Date(`${date}T12:00:00`);
-  const isToday = localReference
-    ? date === localReference.date
+  const referenceDate = localReference
+    ? localReference.date
     : (() => {
         const today = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
-        return (
-          day.getFullYear() === today.getFullYear() &&
-          day.getMonth() === today.getMonth() &&
-          day.getDate() === today.getDate()
-        );
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
       })();
+  const isPastDate = date < referenceDate;
+  const isToday = date === referenceDate;
 
   const occupiedSet = new Set(occupiedSlots);
   const blockedSet = new Set(blockedTimes);
@@ -100,9 +101,10 @@ export function buildBookingGrid(params: {
 
   while (current < end) {
     const slot = formatTime(current);
-    const isPast = localReference
-      ? isToday && current < localReference.minutesSinceMidnight
-      : isToday && slotDateTime(day, slot) < reference;
+    const isPast = isPastDate
+      || (localReference
+        ? isToday && current < localReference.minutesSinceMidnight
+        : isToday && slotDateTime(day, slot) < reference);
     const slotOccupied = occupiedSet.has(slot);
     const slotBlocked = blockedSet.has(slot);
     const fits = canFitAtStart(

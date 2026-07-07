@@ -16,11 +16,23 @@ type DatePickerProps = {
   onChange: (isoDate: string) => void;
   label?: string;
   id?: string;
+  /** Días anteriores a esta fecha no se pueden elegir. */
+  minDate?: Date;
 };
 
 const WEEKDAYS = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
 
-export function DatePicker({ value, onChange, label = 'Fecha', id = 'date-picker' }: DatePickerProps) {
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+export function DatePicker({
+  value,
+  onChange,
+  label = 'Fecha',
+  id = 'date-picker',
+  minDate,
+}: DatePickerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const selected = useMemo(() => parseIso(value), [value]);
@@ -54,6 +66,7 @@ export function DatePicker({ value, onChange, label = 'Fecha', id = 'date-picker
   );
 
   function selectDay(day: Date) {
+    if (minDate && startOfDay(day) < startOfDay(minDate)) return;
     onChange(toIso(day));
     setOpen(false);
   }
@@ -121,16 +134,20 @@ export function DatePicker({ value, onChange, label = 'Fecha', id = 'date-picker
               const inMonth = day.getMonth() === viewMonth.getMonth();
               const isSelected = isSameDay(day, selected);
               const isToday = isSameDay(day, today);
+              const isDisabled =
+                minDate != null && startOfDay(day) < startOfDay(minDate);
 
               return (
                 <button
                   key={toIso(day)}
                   type="button"
+                  disabled={isDisabled}
                   className={[
                     'date-picker-day',
                     !inMonth ? 'date-picker-day-outside' : '',
                     isSelected ? 'date-picker-day-selected' : '',
                     isToday && !isSelected ? 'date-picker-day-today' : '',
+                    isDisabled ? 'date-picker-day-disabled' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
